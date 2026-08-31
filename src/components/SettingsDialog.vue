@@ -24,6 +24,13 @@ const commitRename = () => {
   editingId.value = null
 }
 
+const KEYS = [
+  { keys: 'Tab', what: '구역 이동 (명단 → 툴바 → 좌석)' },
+  { keys: '← ↑ ↓ →', what: '커서 이동 · 가장자리에서 한 번 더 누르면 옆 구역으로' },
+  { keys: 'Enter', what: '선택 · 실행 · 메뉴 열기' },
+  { keys: 'Esc', what: '메뉴 닫기 · 모드 해제 · 선택 해제' }
+]
+
 const confirmRemove = ref(null)
 const doRemove = (id) => {
   props.seating.removeRoster(id)
@@ -116,12 +123,40 @@ const doRemove = (id) => {
             </div>
           </div>
         </section>
+
+        <!-- 키보드 -->
+        <section>
+          <h3 class="sect">키보드</h3>
+          <dl class="flex flex-col gap-1.5">
+            <div v-for="k in KEYS" :key="k.keys" class="flex items-center gap-3">
+              <dt class="flex gap-1 shrink-0 w-[128px]">
+                <kbd v-for="key in k.keys.split(' ')" :key="key">{{ key }}</kbd>
+              </dt>
+              <dd class="text-[15px] font-bold" style="color: var(--c-ink-soft)">{{ k.what }}</dd>
+            </div>
+          </dl>
+        </section>
       </div>
     </DialogContent>
   </Dialog>
 </template>
 
 <style scoped>
+kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 7px;
+  border-radius: 7px;
+  background: var(--c-bg);
+  box-shadow: inset 0 0 0 1.5px var(--c-line), 0 1.5px 0 var(--c-line);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--c-ink);
+}
+
 .sect {
   font-size: 13px;
   font-weight: 700;

@@ -1,11 +1,12 @@
 <script setup>
-import { computed, ref, useTemplateRef } from 'vue'
-import { onClickOutside } from '@vueuse/core'
+import { computed, ref, nextTick, useTemplateRef } from 'vue'
+import { onClickOutside, useFullscreen } from '@vueuse/core'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
-import { Printer, Menu, LayoutGrid, ShieldOff, UserX, Trash2, ArrowLeftRight, X, Settings } from 'lucide-vue-next'
+import { Printer, Menu, LayoutGrid, ShieldOff, UserX, Trash2, ArrowLeftRight, X, Settings, Maximize, Minimize } from 'lucide-vue-next'
 import SettingsDialog from '@/components/SettingsDialog.vue'
 import { openPrintView } from '@/lib/print'
+import { useKeyboardNav } from '@/composables/useKeyboardNav'
 
 const props = defineProps({ seating: Object })
 
@@ -63,12 +64,27 @@ const hint = computed(() => {
   return null
 })
 
+// 전체화면. 창 크기가 바뀌면 App.vue의 resize 리스너가 배율을 다시 맞춘다.
+const { isSupported: canFullscreen, isFullscreen, toggle: toggleFullscreen } = useFullscreen()
+
 // --- 햄버거 메뉴 ---
 // reka-ui DropdownMenu는 body로 포탈되어 부모의 배율을 못 받으므로
 // 캔버스 안에 직접 띄우는 가벼운 패널로 구현한다.
 const isMenuOpen = ref(false)
 const menuRef = useTemplateRef('menuRef')
 onClickOutside(menuRef, () => { isMenuOpen.value = false })
+
+// 키보드 커서: Tab으로 구역을 오가고 방향키로 항목을 옮긴다
+const { focusMenuFirst } = useKeyboardNav(props.seating, {
+  isMenuOpen,
+  onSeatEnter: (r, c) => onSeatClick(getSeatAt(r, c))
+})
+
+// 메뉴를 열면 첫 항목으로 커서를 옮겨 바로 방향키로 고를 수 있게 한다
+const openMenu = async () => {
+  isMenuOpen.value = !isMenuOpen.value
+  if (isMenuOpen.value) { await nextTick(); focusMenuFirst() }
+}
 
 // --- 되돌릴 수 없는 동작 확인 ---
 const confirmKind = ref(null)
@@ -106,9 +122,10 @@ const acceptConfirm = () => { confirmData.value?.action(); confirmKind.value = n
         </Transition>
       </div>
 
-      <div class="flex gap-2.5 items-center shrink-0">
+      <div class="flex gap-2.5 items-center shrink-0" data-zone="toolbar">
         <Button
           v-if="seating.selectedStudent && !seating.isEditMode && !seating.isRestrictionMode"
+          data-kb
           @click="seating.assignBySpin(seating.selectedStudent)"
           :disabled="seating.isAnimating"
         >
@@ -117,6 +134,7 @@ const acceptConfirm = () => { confirmData.value?.action(); confirmKind.value = n
 
         <Button
           v-if="seating.selectedStudent && !seating.isEditMode"
+          data-kb
           @click="seating.isRestrictionMode = !seating.isRestrictionMode"
           :disabled="seating.isAnimating"
           :variant="seating.isRestrictionMode ? 'destructive' : 'outline'"
@@ -124,28 +142,39 @@ const acceptConfirm = () => { confirmData.value?.action(); confirmKind.value = n
           {{ seating.isRestrictionMode ? '설정 완료' : '금지 지정' }}
         </Button>
 
-        <Button v-if="seating.isEditMode" @click="seating.isEditMode = false" variant="destructive">
+        <Button v-if="seating.isEditMode" data-kb @click="seating.isEditMode = false" variant="destructive">
           구조 설정 완료
         </Button>
 
-        <Button variant="outline" size="icon" title="설정"
+        <Button
+          v-if="canFullscreen"
+          data-kb
+          variant="outline" size="icon"
+          :title="isFullscreen ? '전체화면 끝내기' : '전체화면'"
+          @click="toggleFullscreen"
+        >
+          <Minimize v-if="isFullscreen" class="w-5 h-5" />
+          <Maximize v-else class="w-5 h-5" />
+        </Button>
+
+        <Button variant="outline" size="icon" title="설정" data-kb
                 :disabled="seating.isAnimating" @click="isSettingsOpen = true">
           <Settings class="w-5 h-5" />
         </Button>
 
         <div ref="menuRef" class="relative">
-          <Button variant="outline" size="icon" @click="isMenuOpen = !isMenuOpen" title="메뉴">
+          <Button variant="outline" size="icon" data-kb @click="openMenu" title="메뉴">
             <Menu class="w-5 h-5" />
           </Button>
 
           <Transition name="menu">
-            <div v-if="isMenuOpen" class="ui-card absolute right-0 top-full mt-3 w-[320px] z-50 p-2.5">
-              <button class="menu-item" @click="runMenu(() => openPrintView(seating))">
+            <div v-if="isMenuOpen" data-zone="menu" class="ui-card absolute right-0 top-full mt-3 w-[320px] z-50 p-2.5">
+              <button class="menu-item" data-kb @click="runMenu(() => openPrintView(seating))">
                 <Printer class="w-[18px] h-[18px] shrink-0 opacity-45" /> 인쇄
               </button>
 
               <button
-                class="menu-item"
+                class="menu-item" data-kb
                 :disabled="seating.isRestrictionMode || seating.isAnimating"
                 @click="runMenu(() => seating.isEditMode = !seating.isEditMode)"
               >
@@ -156,7 +185,7 @@ const acceptConfirm = () => { confirmData.value?.action(); confirmKind.value = n
 
               <button
                 v-if="seating.selectedStudent?.deniedSeatIds?.length"
-                class="menu-item"
+                class="menu-item" data-kb
                 @click="runMenu(() => seating.clearStudentRestrictions(seating.selectedStudent))"
               >
                 <UserX class="w-[18px] h-[18px] shrink-0 opacity-45" />
@@ -165,7 +194,7 @@ const acceptConfirm = () => { confirmData.value?.action(); confirmKind.value = n
               </button>
 
               <button
-                class="menu-item menu-item--danger"
+                class="menu-item menu-item--danger" data-kb
                 :disabled="seating.restrictionCount === 0 || seating.isAnimating"
                 @click="askConfirm('restrictions')"
               >
@@ -175,7 +204,7 @@ const acceptConfirm = () => { confirmData.value?.action(); confirmKind.value = n
               </button>
 
               <button
-                class="menu-item menu-item--danger"
+                class="menu-item menu-item--danger" data-kb
                 :disabled="seating.isAnimating"
                 @click="askConfirm('assignments')"
               >
@@ -188,7 +217,7 @@ const acceptConfirm = () => { confirmData.value?.action(); confirmKind.value = n
     </div>
 
     <div class="flex-1 min-h-0">
-      <div class="grid gap-2.5 w-full h-full" :style="gridStyle">
+      <div class="grid gap-2.5 w-full h-full" :style="gridStyle" data-zone="seats">
 
         <div />
 
@@ -212,6 +241,7 @@ const acceptConfirm = () => { confirmData.value?.action(); confirmKind.value = n
 
           <div
             v-for="c in seating.gridConfig.cols" :key="`cell-${r - 1}-${c - 1}`"
+            :data-seat="`${r - 1}-${c - 1}`" data-kb tabindex="0"
             @click="onSeatClick(getSeatAt(r - 1, c - 1))"
             class="seat group select-none"
             :class="[

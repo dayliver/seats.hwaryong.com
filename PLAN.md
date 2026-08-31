@@ -38,6 +38,7 @@
 ```
 src/
   composables/useSeating.js   상태와 규칙 전부 (명단·좌석·배정·룰렛·저장)
+  composables/useKeyboardNav.js  Tab/방향키/Enter/Esc 커서. 브라우저 포커스를 그대로 쓴다
   lib/themes.js               테마 팔레트. 색의 단일 출처, CSS 변수로 주입
   lib/print.js                인쇄용 새 창 HTML 생성
   components/
