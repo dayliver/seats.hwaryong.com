@@ -33,6 +33,18 @@ function renderGrid(seating, flipped) {
 export function openPrintView(seating) {
   const { rows, cols } = seating.gridConfig
 
+  // 화면에 적용된 테마 색을 그대로 가져다 쓴다
+  const css = getComputedStyle(document.documentElement)
+  const v = (name, fallback) => (css.getPropertyValue(name).trim() || fallback)
+  const C = {
+    primary: v('--c-primary', '#f40752'),
+    primaryDeep: v('--c-primary-deep', '#c40340'),
+    accentSoft: v('--c-accent-soft', '#ffe9e0'),
+    ink: v('--c-ink', '#452722'),
+    muted: v('--c-muted', '#c0a79d'),
+    line: v('--c-line', '#f1e1d8')
+  }
+
   // A4 세로 한 장에 배치도 2개가 들어가도록 칸 크기를 행 수에 맞춰 조절
   const gap = 2
   const cellH = Math.max(10, Math.min(18, (101 - (rows - 1) * gap) / rows))
@@ -48,12 +60,28 @@ export function openPrintView(seating) {
 <meta charset="utf-8" />
 <title>자리 배치도</title>
 <style>
+  @font-face {
+    font-family: 'A2Z';
+    src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/2601-6@1.0/%EC%97%90%EC%9D%B4%ED%88%AC%EC%A7%80%EC%B2%B4-4Regular.woff2') format('woff2');
+    font-weight: 400;
+  }
+  @font-face {
+    font-family: 'A2Z';
+    src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/2601-6@1.0/%EC%97%90%EC%9D%B4%ED%88%AC%EC%A7%80%EC%B2%B4-7Bold.woff2') format('woff2');
+    font-weight: 700;
+  }
+  @font-face {
+    font-family: 'A2Z';
+    src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/2601-6@1.0/%EC%97%90%EC%9D%B4%ED%88%AC%EC%A7%80%EC%B2%B4-9Black.woff2') format('woff2');
+    font-weight: 900;
+  }
+
   @page { size: A4 portrait; margin: 12mm; }
   * { box-sizing: border-box; }
   body {
     margin: 0;
-    font-family: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
-    color: #0f172a;
+    font-family: 'A2Z', "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+    color: ${C.ink};
     background: #fff;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
@@ -63,16 +91,16 @@ export function openPrintView(seating) {
   .hint {
     margin: 0 0 6mm;
     padding: 3mm 4mm;
-    border: 1px dashed #94a3b8;
-    border-radius: 2mm;
-    background: #f8fafc;
-    color: #475569;
+    border-radius: 3mm;
+    background: ${C.accentSoft};
+    color: ${C.primaryDeep};
     font-size: 10pt;
+    font-weight: 700;
   }
-  .hint b { color: #0f172a; }
 
-  h1 { margin: 0; font-size: 15pt; font-weight: 800; letter-spacing: -0.02em; }
-  .date { margin: 1mm 0 7mm; font-size: 8.5pt; color: #94a3b8; }
+  h1 { margin: 0; font-size: 16pt; font-weight: 900; letter-spacing: -0.02em; }
+  h1 span { color: ${C.primary}; }
+  .date { margin: 1.5mm 0 7mm; font-size: 8.5pt; color: ${C.muted}; font-weight: 700; }
 
   section + section { margin-top: 9mm; }
   h2 {
@@ -86,10 +114,9 @@ export function openPrintView(seating) {
 
   .podium {
     width: 56mm;
-    margin: 3.5mm auto;
-    border: 1pt solid #0f172a;
-    border-radius: 1.5mm;
-    background: #0f172a;
+    margin: 4mm auto;
+    border-radius: 999px;
+    background: ${C.primary};
     color: #fff;
     text-align: center;
     font-size: 9.5pt;
@@ -106,7 +133,7 @@ export function openPrintView(seating) {
   }
   .cell {
     height: ${cellH.toFixed(1)}mm;
-    border-radius: 1.5mm;
+    border-radius: 2.5mm;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -116,12 +143,12 @@ export function openPrintView(seating) {
     line-height: 1.15;
   }
   .cell.taken {
-    border: 1pt solid #0f172a;
+    border: 1.1pt solid ${C.ink};
     font-size: ${nameSize}pt;
     font-weight: 700;
     letter-spacing: -0.02em;
   }
-  .cell.empty { border: 0.7pt dashed #cbd5e1; }
+  .cell.empty { border: 0.8pt dashed ${C.line}; }
   .cell.void { border: none; }
 
   @media print { .hint { display: none; } .sheet { padding: 0; } }
@@ -129,9 +156,9 @@ export function openPrintView(seating) {
 </head>
 <body>
   <div class="sheet">
-    <p class="hint"><b>Ctrl + P</b> (Mac은 <b>⌘ + P</b>) 를 눌러 인쇄하세요. 이 안내문은 인쇄되지 않습니다.</p>
+    <p class="hint">Ctrl + P (Mac은 ⌘ + P) 를 눌러 인쇄하세요. 이 안내문은 인쇄되지 않습니다.</p>
 
-    <h1>자리 배치도</h1>
+    <h1>${esc(seating.activeRoster?.name || '')} 자리 <span>배치도</span></h1>
     <p class="date">${esc(today)}</p>
 
     <section>

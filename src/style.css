@@ -118,3 +118,167 @@
     @apply bg-background text-foreground;
   }
 }
+/* ==========================================================================
+   테마 기본값(초코). 실제 색은 lib/themes.js가 CSS 변수로 덮어쓴다.
+   여기 값은 JS가 뜨기 전 첫 페인트에서 색이 튀지 않게 하는 용도.
+   폰트는 눈누 jsdelivr CDN에서 가져온다 (CORS·CORP 헤더가 있어 COEP와 호환).
+   아래 규칙은 레이어 밖에 두어 Tailwind 유틸리티보다 우선한다.
+   ========================================================================== */
+
+@font-face {
+  font-family: 'A2Z';
+  src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/2601-6@1.0/%EC%97%90%EC%9D%B4%ED%88%AC%EC%A7%80%EC%B2%B4-4Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'A2Z';
+  src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/2601-6@1.0/%EC%97%90%EC%9D%B4%ED%88%AC%EC%A7%80%EC%B2%B4-5Medium.woff2') format('woff2');
+  font-weight: 500;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'A2Z';
+  src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/2601-6@1.0/%EC%97%90%EC%9D%B4%ED%88%AC%EC%A7%80%EC%B2%B4-7Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'A2Z';
+  src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/2601-6@1.0/%EC%97%90%EC%9D%B4%ED%88%AC%EC%A7%80%EC%B2%B4-9Black.woff2') format('woff2');
+  font-weight: 900;
+  font-display: swap;
+}
+
+:root {
+  --f: 'A2Z', 'Pretendard', system-ui, sans-serif;
+
+  --c-primary: #f40752;
+  --c-primary-deep: #c40340;
+  --c-primary-soft: #ff5c86;
+  --c-accent: #f9ab8f;
+  --c-accent-soft: #ffe9e0;
+
+  --c-ink: #452722;        /* 글자 */
+  --c-strong: #5a332c;     /* 배정된 좌석처럼 넓게 칠하는 면 */
+  --c-ink-soft: #8c655a;
+  --c-muted: #c0a79d;
+  --c-line: #f1e1d8;
+  --c-bg: #fdf5f2;
+  --c-shell: #e8d5cd;
+  --c-surface: #ffffff;
+
+  --grad: linear-gradient(135deg, #f40752 0%, #f9ab8f 100%);
+  --shadow-sm: 0 2px 8px -2px rgba(74, 43, 38, 0.10);
+  --shadow-md: 0 12px 32px -12px rgba(74, 43, 38, 0.20);
+  --shadow-hot: 0 14px 34px -10px rgba(244, 7, 82, 0.52);
+  --overlay: rgba(90, 51, 44, 0.94);
+}
+
+body {
+  font-family: var(--f);
+  color: var(--c-ink);
+}
+
+/* --- 버튼 --- */
+.ui-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  height: 52px;
+  padding: 0 24px;
+  border: 0;
+  border-radius: 14px;
+  font-family: var(--f);
+  font-weight: 700;
+  font-size: 20px;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: transform 120ms ease, box-shadow 200ms ease, background-color 160ms ease, color 160ms ease;
+}
+.ui-btn:active:not(:disabled) { transform: translateY(1px) scale(0.985); }
+.ui-btn:disabled { opacity: 0.4; cursor: default; }
+
+.ui-btn--primary {
+  background: var(--grad);
+  color: #fff;
+  box-shadow: var(--shadow-hot);
+}
+.ui-btn--primary:hover:not(:disabled) { box-shadow: 0 18px 40px -12px rgba(244, 7, 82, 0.62); }
+
+.ui-btn--solid { background: var(--c-primary); color: #fff; box-shadow: var(--shadow-hot); }
+.ui-btn--solid:hover:not(:disabled) { background: var(--c-primary-deep); }
+
+.ui-btn--soft { background: var(--c-accent-soft); color: var(--c-primary-deep); }
+.ui-btn--soft:hover:not(:disabled) { background: #ffdcd0; }
+
+.ui-btn--outline {
+  background: var(--c-surface);
+  color: var(--c-ink);
+  box-shadow: inset 0 0 0 1.5px var(--c-line), var(--shadow-sm);
+}
+.ui-btn--outline:hover:not(:disabled) { box-shadow: inset 0 0 0 1.5px var(--c-accent), var(--shadow-sm); }
+
+.ui-btn--ghost { background: transparent; color: var(--c-ink); box-shadow: none; }
+.ui-btn--ghost:hover:not(:disabled) { background: rgba(90, 51, 44, 0.07); }
+
+.ui-btn--sm { height: 42px; padding: 0 16px; font-size: 17px; border-radius: 11px; }
+.ui-btn--icon { width: 52px; padding: 0; }
+
+/* --- 카드/패널 --- */
+.ui-card {
+  background: var(--c-surface);
+  border-radius: 22px;
+  box-shadow: var(--shadow-md);
+}
+
+.ui-pill {
+  display: inline-flex;
+  align-items: center;
+  height: 36px;
+  padding: 0 16px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 16px;
+  line-height: 1;
+}
+
+/* --- 좌석 --- */
+.seat {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 18px;
+  cursor: pointer;
+  transition: transform 140ms ease, box-shadow 200ms ease, background-color 160ms ease;
+}
+.seat--free {
+  background: var(--c-surface);
+  box-shadow: inset 0 0 0 2px var(--c-line);
+  color: var(--c-muted);
+}
+.seat--free:hover { box-shadow: inset 0 0 0 2px var(--c-accent); }
+.seat--taken {
+  background: var(--c-strong);
+  color: #fff;
+  box-shadow: var(--shadow-md);
+}
+.seat--hot {
+  background: var(--grad);
+  color: #fff;
+  transform: scale(1.06);
+  box-shadow: var(--shadow-hot);
+  z-index: 10;
+}
+.seat--deny {
+  background: var(--c-accent-soft);
+  color: var(--c-primary);
+  box-shadow: inset 0 0 0 2px var(--c-accent);
+}
+.seat--void {
+  background: rgba(90, 51, 44, 0.07);
+  cursor: pointer;
+}

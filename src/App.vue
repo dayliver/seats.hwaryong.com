@@ -3,6 +3,7 @@ import { ref, onMounted, onUnmounted } from 'vue'
 import { useSeating } from '@/composables/useSeating'
 import StudentPanel from '@/components/StudentPanel.vue'
 import SeatGrid from '@/components/SeatGrid.vue'
+import SpinOverlay from '@/components/SpinOverlay.vue'
 
 // 비즈니스 로직 주입 (composables에서 가져옴)
 const seating = useSeating()
@@ -16,7 +17,9 @@ const updateScale = () => {
   const winWidth = window.innerWidth
   const winHeight = window.innerHeight
   
-  // 가로/세로 중 더 꽉 차는 비율에 맞춰 스케일 결정
+  // 가로/세로 중 더 꽉 차는 비율에 맞춰 배율 결정.
+  // transform:scale() 대신 zoom을 쓴다 — transform은 배치가 끝난 뒤 확대하므로
+  // 9-slice 조각들이 각자 반올림되어 경계에 틈이 생긴다.
   const widthRatio = winWidth / rootWidth
   const heightRatio = winHeight / rootHeight
   scale.value = Math.min(widthRatio, heightRatio)
@@ -33,25 +36,32 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="fixed inset-0 bg-[#0f172a] flex items-center justify-center overflow-hidden">
+  <div class="fixed inset-0 flex items-center justify-center overflow-hidden"
+         style="background: var(--c-shell)">
     
     <div 
       id="presentation-root"
-      class="bg-white flex shadow-[0_0_100px_rgba(0,0,0,0.5)] overflow-hidden origin-center transition-transform duration-200"
+      class="relative flex shadow-[0_30px_90px_-20px_rgba(74,43,38,0.42)] overflow-hidden"
       :style="{ 
         width: `${rootWidth}px`, 
         height: `${rootHeight}px`,
-        transform: `scale(${scale})` 
+        zoom: scale,
+        background: 'var(--c-bg)' 
       }"
     >
       <StudentPanel :seating="seating" />
 
       <SeatGrid :seating="seating" />
-      
+
+      <Transition name="spin-fade">
+        <SpinOverlay v-if="seating.spin.active" :spin="seating.spin" />
+      </Transition>
+
     </div>
 
-    <div class="absolute bottom-4 right-4 text-white/30 text-xs pointer-events-none">
-      Scaling: {{ scale.toFixed(2) }}x | 1920x1080
+    <div class="absolute bottom-3 right-4 text-[11px] pointer-events-none"
+         style="color: var(--c-ink); opacity: 0.3">
+      {{ scale.toFixed(2) }}x · 에이투지체
     </div>
   </div>
 </template>
@@ -62,8 +72,14 @@ body {
   margin: 0;
   padding: 0;
   cursor: default;
-  -webkit-font-smoothing: antialiased;
+  background: var(--c-shell);
 }
+
+/* 배정 연출 오버레이 등장/퇴장 */
+.spin-fade-enter-active { transition: opacity 300ms ease; }
+.spin-fade-leave-active { transition: opacity 400ms ease; }
+.spin-fade-enter-from,
+.spin-fade-leave-to { opacity: 0; }
 
 /* 스크롤바 커스텀: 프레젠테이션 느낌 유지 */
 ::-webkit-scrollbar {
@@ -73,10 +89,10 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 10px;
+  background: #e3cfc7;
+  border-radius: 999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: #f9ab8f;
 }
 </style>
