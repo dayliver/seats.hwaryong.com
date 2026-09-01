@@ -6,7 +6,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Printer, Menu, LayoutGrid, ShieldOff, UserX, Trash2, ArrowLeftRight, X, Settings, Maximize, Minimize } from 'lucide-vue-next'
 import SettingsDialog from '@/components/SettingsDialog.vue'
 import { openPrintView } from '@/lib/print'
-import { useKeyboardNav } from '@/composables/useKeyboardNav'
+import { useKeyboardNav, navCursor } from '@/composables/useKeyboardNav'
+import { actionMenu, openActionMenu, closeActionMenu } from '@/composables/useActionMenu'
 
 const props = defineProps({ seating: Object })
 
@@ -54,10 +55,128 @@ const onSeatClick = (seat) => {
   }
 }
 
+// 좌석을 고르라고 지시해 둔 상태 — 마우스로도 어느 칸을 누를지 보이게 강조한다
+const pickingSeat = computed(() => {
+  const s = props.seating
+  return !!s.placingStudentId || s.isSwapMode || s.isEditMode || s.isRestrictionMode
+})
+
+// 진행 중인 지시가 있으면 메뉴를 열지 않고 곧바로 그 지시를 수행한다
+const hasPendingOrder = () => {
+  const s = props.seating
+  return s.isSwapMode || s.isEditMode || s.isRestrictionMode ||
+         !!s.placingStudentId || !!s.lineSwapFrom
+}
+
+const activateSeat = (r, c) => {
+  const { seating } = props
+  if (seating.isAnimating) return
+  const seat = getSeatAt(r, c)
+  const el = document.querySelector(`[data-seat="${r}-${c}"]`)
+
+  if (hasPendingOrder()) {
+    if (seating.placingStudentId && seat?.status === 'available') {
+      const st = seating.students.find(x => x.id === seating.placingStudentId)
+      if (st) return void seating.placeStudentAt(st, seat.id)
+    }
+    return onSeatClick(seat)
+  }
+  if (!seat) return
+  seating.pendingSeatId = null      // 다른 자리를 열었으면 앞선 '학생 고르기'는 무효
+  openActionMenu(el, seatMenu(seat))
+}
+
+const seatMenu = (seat) => {
+  const { seating } = props
+  const code = seating.getSeatCode(seat.id)
+  const sel = seating.selectedStudent
+
+  if (seat.status === 'occupied') {
+    const name = seating.getStudentName(seat.studentId)
+    return {
+      title: `${code} · ${name}`,
+      items: [
+        { key: 'move', label: '자리 옮기기', run: () => seating.startSwap(seat.id) },
+        { key: 'off', label: '배정 해제', danger: true, run: () => seating.cancelAssignment(seat.id) }
+      ]
+    }
+  }
+
+  const denied = sel?.deniedSeatIds?.includes(seat.id)
+  return {
+    title: `${code} · ${seat.status === 'forbidden' ? '없는 자리' : '빈 자리'}`,
+    items: [
+      seat.status === 'available' && sel && !denied && {
+        key: 'sit', label: `${sel.name} 앉히기`,
+        run: () => seating.placeStudentAt(sel, seat.id)
+      },
+      seat.status === 'available' && {
+        key: 'pick', label: '학생 고르기',
+        run: () => { seating.startPickingFor(seat.id); navCursor.toStudents() }
+      },
+      seat.status === 'available' && sel && {
+        key: 'deny', label: denied ? `${sel.name} 금지 해제` : `${sel.name}에게 금지`,
+        run: () => seating.toggleRestriction(sel, seat.id)
+      },
+      {
+        key: 'forbid',
+        label: seat.status === 'forbidden' ? '자리 되살리기' : '이 자리 없애기',
+        danger: seat.status !== 'forbidden',
+        run: () => seating.toggleSeatForbidden(seat)
+      }
+    ]
+  }
+}
+
+// 행·열 머리글 메뉴
+const activateAxis = (type, index, el) => {
+  const { seating } = props
+  if (seating.isAnimating) return
+
+  if (seating.lineSwapFrom) return seating.executeLineSwap(type, index)
+  if (seating.isRestrictionMode) return seating.toggleBatchRestriction(type, index)
+
+  const info = seating.lineInfo(type, index)
+  const label = type === 'row' ? `${index + 1}행` : `${String.fromCharCode(65 + index)}열`
+  const sel = seating.selectedStudent
+
+  openActionMenu(el, {
+    title: `${label} · ${info.total}칸`,
+    hint: sel ? '' : '학생을 먼저 고르면 금지 지정도 할 수 있습니다.',
+    items: [
+      sel && {
+        key: 'deny',
+        label: info.allDenied ? `${sel.name} 금지 해제` : `${sel.name}에게 줄 전체 금지`,
+        run: () => seating.toggleBatchRestriction(type, index)
+      },
+      {
+        key: 'clear', label: '이 줄 배정 해제', note: info.occupied ? `${info.occupied}명` : '',
+        disabled: info.occupied === 0, danger: true,
+        run: () => seating.clearLineAssignments(type, index)
+      },
+      {
+        key: 'swap', label: `다른 ${type === 'row' ? '행' : '열'}과 통째 교체`,
+        disabled: info.occupied === 0,
+        run: () => seating.startLineSwap(type, index)
+      },
+      {
+        key: 'forbid',
+        label: info.forbidden === info.total ? '이 줄 되살리기' : '이 줄 자리 없애기',
+        note: info.occupied ? '앉은 자리 제외' : '',
+        danger: info.forbidden !== info.total,
+        run: () => seating.setLineForbidden(type, index, info.forbidden !== info.total)
+      }
+    ]
+  })
+}
+
 // 지금 어떤 모드인지 알려주는 안내 배지
 const hint = computed(() => {
   const s = props.seating
+  if (s.lineSwapFrom) return `교체할 ${s.lineSwapFrom.type === 'row' ? '행' : '열'}을 고르세요`
   if (s.isSwapMode) return '교체할 자리를 고르세요'
+  if (s.placingStudentId) return `${s.getStudentName(s.placingStudentId)} 앉힐 자리를 고르세요`
+  if (s.pendingSeatId) return `${s.getSeatCode(s.pendingSeatId)}에 앉힐 학생을 고르세요`
   if (s.isRestrictionMode) return '이 학생이 앉으면 안 될 자리를 고르세요'
   if (s.isEditMode) return '없앨 자리를 고르세요'
   if (s.selectedStudent) return '자리를 직접 고르거나 룰렛을 돌리세요'
@@ -74,10 +193,20 @@ const isMenuOpen = ref(false)
 const menuRef = useTemplateRef('menuRef')
 onClickOutside(menuRef, () => { isMenuOpen.value = false })
 
+// 햄버거와 액션 메뉴 중 열려 있는 쪽을 키보드 조작이 다루게 한다
+const anyMenuOpen = computed(() => isMenuOpen.value || actionMenu.open)
+const closeAnyMenu = (opt = {}) => {
+  if (actionMenu.open) return closeActionMenu(opt)
+  if (isMenuOpen.value) {
+    isMenuOpen.value = false
+    if (opt.restoreFocus !== false) menuRef.value?.querySelector('[data-kb]')?.focus()
+  }
+}
+
 // 키보드 커서: Tab으로 구역을 오가고 방향키로 항목을 옮긴다
 const { focusMenuFirst } = useKeyboardNav(props.seating, {
-  isMenuOpen,
-  onSeatEnter: (r, c) => onSeatClick(getSeatAt(r, c))
+  menu: { isOpen: anyMenuOpen, close: closeAnyMenu },
+  onActivate: (r, c) => activateSeat(r, c)
 })
 
 // 메뉴를 열면 첫 항목으로 커서를 옮겨 바로 방향키로 고를 수 있게 한다
@@ -223,18 +352,28 @@ const acceptConfirm = () => { confirmData.value?.action(); confirmKind.value = n
 
         <button
           v-for="c in seating.gridConfig.cols" :key="'col-h-' + c"
-          @click="seating.toggleBatchRestriction('col', c - 1)"
-          :disabled="!seating.isRestrictionMode"
-          class="axis" :class="seating.isRestrictionMode ? 'axis--live' : ''"
+          :data-axis="`col-${c - 1}`" data-kb
+          :disabled="seating.isAnimating"
+          @click="activateAxis('col', c - 1, $event.currentTarget)"
+          class="axis"
+          :class="[
+            seating.isRestrictionMode ? 'axis--live' : '',
+            seating.lineSwapFrom?.type === 'col' && seating.lineSwapFrom.index === c - 1 ? 'axis--picked' : ''
+          ]"
         >
           {{ String.fromCharCode(64 + c) }}
         </button>
 
         <template v-for="r in seating.gridConfig.rows" :key="'row-g-' + r">
           <button
-            @click="seating.toggleBatchRestriction('row', r - 1)"
-            :disabled="!seating.isRestrictionMode"
-            class="axis" :class="seating.isRestrictionMode ? 'axis--live' : ''"
+            :data-axis="`row-${r - 1}`" data-kb
+            :disabled="seating.isAnimating"
+            @click="activateAxis('row', r - 1, $event.currentTarget)"
+            class="axis"
+            :class="[
+              seating.isRestrictionMode ? 'axis--live' : '',
+              seating.lineSwapFrom?.type === 'row' && seating.lineSwapFrom.index === r - 1 ? 'axis--picked' : ''
+            ]"
           >
             {{ r }}
           </button>
@@ -242,7 +381,7 @@ const acceptConfirm = () => { confirmData.value?.action(); confirmKind.value = n
           <div
             v-for="c in seating.gridConfig.cols" :key="`cell-${r - 1}-${c - 1}`"
             :data-seat="`${r - 1}-${c - 1}`" data-kb tabindex="0"
-            @click="onSeatClick(getSeatAt(r - 1, c - 1))"
+            @click="activateSeat(r - 1, c - 1)"
             class="seat group select-none"
             :class="[
               `seat--${stateOf(r - 1, c - 1)}`,
@@ -318,8 +457,10 @@ const acceptConfirm = () => { confirmData.value?.action(); confirmKind.value = n
   border-radius: 8px;
   transition: color 140ms ease, background-color 140ms ease;
 }
-.axis--live { color: var(--c-primary); cursor: pointer; }
-.axis--live:hover { background: var(--c-accent-soft); }
+.axis { cursor: pointer; }
+.axis:hover:not(:disabled) { background: var(--c-accent-soft); color: var(--c-ink); }
+.axis--live { color: var(--c-primary); }
+.axis--picked { color: #fff; background: var(--c-primary); }
 
 .is-swapping { box-shadow: 0 0 0 4px var(--c-primary), var(--shadow-md); z-index: 20; }
 

@@ -166,6 +166,8 @@
   --c-line: #f1e1d8;
   --c-bg: #fdf5f2;
   --c-shell: #e8d5cd;
+  --c-grid: rgba(69, 39, 34, 0.07);
+  --c-grid-strong: rgba(69, 39, 34, 0.11);
   --c-surface: #ffffff;
 
   --grad: linear-gradient(135deg, #f40752 0%, #f9ab8f 100%);
@@ -282,6 +284,16 @@ body {
   background: rgba(90, 51, 44, 0.07);
   cursor: pointer;
 }
+.seat--void:hover { background: rgba(90, 51, 44, 0.12); }
+.seat--taken:hover { box-shadow: var(--shadow-md), inset 0 0 0 2px var(--c-accent); }
+.seat--deny:hover { box-shadow: inset 0 0 0 2px var(--c-primary); }
+
+/* 지시를 내려둔 상태에서 대상을 고르는 중 — 누를 칸이 카드처럼 떠오른다 */
+.seat.is-target:hover {
+  background: var(--c-surface);
+  box-shadow: inset 0 0 0 3px var(--c-primary), var(--shadow-md);
+}
+.seat--taken.is-target:hover { background: var(--c-strong); }
 
 /* --- 키보드 커서 --- */
 [data-kb]:focus-visible {

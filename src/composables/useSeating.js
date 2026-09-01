@@ -13,11 +13,35 @@ const blankRoster = (name) => ({
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms))
 
-// 주사위 6면: +, -, × 2면씩.
-// 빼기가 나오면 값이 음수가 될 수 있고, 그때는 뒤쪽으로 이동한다.
-const DICE_FACES = ['+', '-', '×', '+', '-', '×']
+// 룰렛 셋을 돌린다.
+//   ① 칸수     : 눈금이 '지금 앉을 수 있는 자리 수'만큼. 1~N이 후보를 정확히
+//                한 번씩 덮으므로 어느 자리든 똑같은 확률로 나온다.
+//   ② 첫 방향  : 줄을 따라 어느 쪽으로 세어 갈지 (상하좌우)
+//   ③ 줄 끝 방향 : 줄이 끝났을 때 어느 줄로 넘어갈지
+// ②와 ③은 서로 수직이어야 하므로, ②가 멈춘 뒤 ③의 눈금을 두 갈래로 좁힌다.
+const DIR_FACES = ['→', '←', '↑', '↓']
+const isHoriz = (d) => d === '→' || d === '←'
+const crossFaces = (d) => (isHoriz(d) ? ['↑', '↓'] : ['←', '→'])
 
-const applyOp = (a, op, b) => (op === '+' ? a + b : op === '-' ? a - b : a * b)
+const pick = (list) => list[Math.floor(Math.random() * list.length)]
+
+// 두 방향이 정하는 '세는 순서'대로 좌석에 매길 번호.
+// 앞 방향이 줄 안에서의 진행, 뒷 방향이 줄과 줄 사이의 진행이다.
+function orderKeyFactory(d1, d2, rows, cols) {
+  const horiz = isHoriz(d1)
+  const lineCount = horiz ? rows : cols   // 줄의 개수
+  const posCount = horiz ? cols : rows    // 한 줄의 길이
+  const lineAsc = d2 === '↓' || d2 === '→'
+  const posAsc = d1 === '→' || d1 === '↓'
+
+  return (seat) => {
+    const line = horiz ? seat.row : seat.col
+    const pos = horiz ? seat.col : seat.row
+    const lineRank = lineAsc ? line : lineCount - 1 - line
+    const posRank = posAsc ? pos : posCount - 1 - pos
+    return lineRank * posCount + posRank
+  }
+}
 
 const roll9 = () => 1 + Math.floor(Math.random() * 9)
 
@@ -50,13 +74,21 @@ export function useSeating() {
   const activeRosterId = ref(null)
   const themeId = ref(DEFAULT_THEME)
 
+  // 진행 중인 지시
+  const placingStudentId = ref(null)   // '직접 배정' — 다음에 고르는 빈 자리에 앉힌다
+  const pendingSeatId = ref(null)      // 빈 자리에서 '학생 고르기' — 다음에 고르는 학생을 앉힌다
+  const lineSwapFrom = ref(null)       // 줄 교체 출발지 { type, index }
+
   // 룰렛/주사위 연출 상태 (직전 학생 자리가 다음 학생의 출발점이 된다)
   const lastAssignedSeatId = ref(null)
   const spin = reactive({
     active: false,
-    phase: 'idle',   // intro | roulette1 | dice | roulette2 | formula
+    phase: 'idle',   // intro | r1 | r2 | r3 | result
     studentName: '',
-    a: null, op: null, b: null, value: null
+    n: null,                     // ① 칸수
+    slots: [],                   // ① 눈금 (남은 자리 수만큼)
+    d1: null, d2: null,          // ② 첫 방향 / ③ 줄 끝 방향
+    d2Slots: DIR_FACES           // ③ 눈금 (②가 정해지면 두 갈래로 좁아진다)
   })
 
   const initGrid = () => {
@@ -97,6 +129,104 @@ export function useSeating() {
     if (student) student.deniedSeatIds = []
   }
 
+  // --- 줄(행/열) 단위 조작 ---
+  const lineSeats = (type, index) =>
+    seats.value
+      .filter(s => (type === 'row' ? s.row === index : s.col === index))
+      .sort((a, b) => (type === 'row' ? a.col - b.col : a.row - b.row))
+
+  // 앉아 있는 자리는 건드리지 않는다 — 자리를 없애려면 먼저 배정을 풀어야 한다
+  const setLineForbidden = (type, index, forbidden) => {
+    lineSeats(type, index).forEach(s => {
+      if (s.status === 'occupied') return
+      s.status = forbidden ? 'forbidden' : 'available'
+    })
+  }
+
+  const clearLineAssignments = (type, index) => {
+    lineSeats(type, index).forEach(s => {
+      if (s.status !== 'occupied') return
+      const st = students.value.find(x => x.id === s.studentId)
+      if (st) st.isAssigned = false
+      s.studentId = null
+      s.status = 'available'
+    })
+  }
+
+  const startLineSwap = (type, index) => { lineSwapFrom.value = { type, index } }
+
+  // 같은 종류(행↔행, 열↔열)끼리만 맞바꾼다. 길이가 달라질 일이 없고 방향도 헷갈리지 않는다.
+  const executeLineSwap = (type, index) => {
+    const from = lineSwapFrom.value
+    lineSwapFrom.value = null
+    if (!from || from.type !== type || from.index === index) return
+
+    const a = lineSeats(from.type, from.index)
+    const b = lineSeats(type, index)
+    const n = Math.min(a.length, b.length)
+    for (let i = 0; i < n; i++) {
+      const sa = a[i], sb = b[i]
+      if (sa.status === 'forbidden' || sb.status === 'forbidden') continue
+      const t = sa.studentId
+      sa.studentId = sb.studentId
+      sb.studentId = t
+      sa.status = sa.studentId ? 'occupied' : 'available'
+      sb.status = sb.studentId ? 'occupied' : 'available'
+    }
+  }
+
+  // 메뉴 문구를 정할 때 쓰는 줄 요약
+  const lineInfo = (type, index) => {
+    const list = lineSeats(type, index)
+    const sel = selectedStudent.value
+    return {
+      total: list.length,
+      occupied: list.filter(s => s.status === 'occupied').length,
+      forbidden: list.filter(s => s.status === 'forbidden').length,
+      free: list.filter(s => s.status === 'available').length,
+      allDenied: !!sel && list.length > 0 && list.every(s => sel.deniedSeatIds.includes(s.id))
+    }
+  }
+
+  // 한 학생이 두 자리를 차지하지 않도록, 앉히기 전에 원래 자리를 비운다
+  const releaseStudent = (studentId) => {
+    seats.value.forEach(s => {
+      if (s.studentId !== studentId) return
+      s.studentId = null
+      s.status = 'available'
+      if (lastAssignedSeatId.value === s.id) lastAssignedSeatId.value = null
+    })
+  }
+
+  // --- 좌석 단위 조작 ---
+  const toggleSeatForbidden = (seat) => {
+    if (!seat || seat.status === 'occupied') return
+    seat.status = seat.status === 'forbidden' ? 'available' : 'forbidden'
+  }
+
+  const startPlacing = (student) => {
+    selectedStudent.value = student
+    pendingSeatId.value = null
+    placingStudentId.value = student.id
+  }
+
+  const startPickingFor = (seatId) => {
+    placingStudentId.value = null
+    pendingSeatId.value = seatId
+  }
+
+  // 지시 하나를 취소한다. 안쪽 것부터 하나씩 푼다.
+  const cancelPending = () => {
+    if (lineSwapFrom.value) { lineSwapFrom.value = null; return true }
+    if (isSwapMode.value) { isSwapMode.value = false; swapSourceId.value = null; return true }
+    if (placingStudentId.value) { placingStudentId.value = null; return true }
+    if (pendingSeatId.value) { pendingSeatId.value = null; return true }
+    if (isRestrictionMode.value) { isRestrictionMode.value = false; return true }
+    if (isEditMode.value) { isEditMode.value = false; return true }
+    if (selectedStudent.value) { selectedStudent.value = null; return true }
+    return false
+  }
+
   // 금지로 지정된 좌석의 총 개수 (학생 전체 합산)
   const restrictionCount = computed(
     () => students.value.reduce((n, s) => n + (s.deniedSeatIds?.length || 0), 0)
@@ -115,6 +245,9 @@ export function useSeating() {
     isSwapMode.value = false
     swapSourceId.value = null
     lastAssignedSeatId.value = null
+    placingStudentId.value = null
+    pendingSeatId.value = null
+    lineSwapFrom.value = null
   }
 
   // ★ 추가: 개별 배정 취소
@@ -294,6 +427,10 @@ export function useSeating() {
     gridConfig, students, seats, isEditMode, isRestrictionMode, isAnimating,
     highlightedSeatId, selectedStudent, countdownValue,
     isSwapMode, swapSourceId, spin, lastAssignedSeatId,
+    placingStudentId, pendingSeatId, lineSwapFrom,
+    lineSeats, lineInfo, setLineForbidden, clearLineAssignments,
+    startLineSwap, executeLineSwap,
+    toggleSeatForbidden, startPlacing, startPickingFor, cancelPending, releaseStudent,
     rosters, activeRosterId, themeId,
     switchRoster, addRoster, duplicateRoster, renameRoster, removeRoster, setTheme,
     activeRoster: computed(() => rosters.value.find(r => r.id === activeRosterId.value) || null),
@@ -323,8 +460,22 @@ export function useSeating() {
         else { if (idx === -1) selectedStudent.value.deniedSeatIds.push(s.id) }
       })
     },
+    getStudentSeatId: (studentId) => seats.value.find(s => s.studentId === studentId)?.id || null,
+    placeStudentAt: (student, seatId) => {
+      const seat = seats.value.find(s => s.id === seatId)
+      if (!seat || seat.status !== 'available' || student.deniedSeatIds.includes(seat.id)) return false
+      releaseStudent(student.id)
+      seat.studentId = student.id
+      seat.status = 'occupied'
+      student.isAssigned = true
+      selectedStudent.value = null
+      placingStudentId.value = null
+      pendingSeatId.value = null
+      return true
+    },
     assignManual: (student, seat) => {
       if (seat.status !== 'available' || student.deniedSeatIds.includes(seat.id)) return
+      releaseStudent(student.id)
       seat.studentId = student.id
       seat.status = 'occupied'
       student.isAssigned = true
@@ -333,47 +484,51 @@ export function useSeating() {
     assignBySpin: async (student) => {
       if (isAnimating.value) return
 
-      // 이동은 '이 학생이 앉을 수 있는 빈 자리' 위에서만 센다.
+      // 후보는 '이 학생이 앉을 수 있는 빈 자리'뿐이다.
       // 목록 길이로 순환시키므로 몇 칸이 나오든 항상 유효한 자리에 착지한다.
-      const orderOf = (s) => s.row * gridConfig.cols + s.col
-      const candidates = seats.value
-        .filter(s => s.status === 'available' && !student.deniedSeatIds.includes(s.id))
-        .sort((a, b) => orderOf(a) - orderOf(b))
-      if (candidates.length === 0) return
+      const free = seats.value.filter(
+        s => s.status === 'available' && !student.deniedSeatIds.includes(s.id)
+      )
+      if (free.length === 0) return
 
       isAnimating.value = true
-      const N = candidates.length
 
       // --- 오버레이 연출 ---
       Object.assign(spin, {
         active: true, phase: 'intro', studentName: student.name,
-        a: null, op: null, b: null, value: null
+        n: null, slots: Array.from({ length: free.length }, (_, i) => i + 1),
+        d1: null, d2: null, d2Slots: DIR_FACES
       })
       await wait(600)
 
-      spin.phase = 'roulette1'
-      spin.a = roll9()
-      await wait(2100)
+      spin.phase = 'r1'
+      spin.n = 1 + Math.floor(Math.random() * free.length)
+      await wait(2200)
 
-      spin.phase = 'dice'
-      await wait(350)
-      spin.op = DICE_FACES[Math.floor(Math.random() * DICE_FACES.length)]
-      await wait(3350)   // 슬롯 회전 + 넘어갈 듯 말 듯 멈칫거리는 시간
+      spin.phase = 'r2'
+      spin.d1 = pick(DIR_FACES)
+      await wait(2200)
 
-      spin.phase = 'roulette2'
-      spin.b = roll9()
-      await wait(2100)
+      spin.phase = 'r3'
+      spin.d2Slots = crossFaces(spin.d1)   // 앞 방향과 수직인 두 갈래만 남는다
+      await wait(250)
+      spin.d2 = pick(spin.d2Slots)
+      await wait(2200)
 
-      spin.phase = 'formula'
-      spin.value = applyOp(spin.a, spin.op, spin.b)
-      await wait(1800)
+      spin.phase = 'result'
+      await wait(1500)
 
       spin.active = false
       spin.phase = 'idle'
       await wait(400)
 
       // --- 격자 위 이동 ---
-      // 출발점은 직전 학생 자리 바로 다음 후보. 첫 학생은 A1부터.
+      // 주사위가 정한 순서대로 후보를 줄 세운다
+      const orderOf = orderKeyFactory(spin.d1, spin.d2, gridConfig.rows, gridConfig.cols)
+      const candidates = [...free].sort((a, b) => orderOf(a) - orderOf(b))
+      const N = candidates.length
+
+      // 출발점은 직전 학생 자리 바로 다음 후보. 첫 학생은 맨 앞부터.
       const prev = lastAssignedSeatId.value
         ? seats.value.find(s => s.id === lastAssignedSeatId.value)
         : null
@@ -382,9 +537,8 @@ export function useSeating() {
       if (startIdx === -1) startIdx = 0
 
       // 출발 칸에 전체 칸수를 띄우고 그만큼 이동한다 → 도착 칸에는 0이 뜬다.
-      // 값이 음수면 뒤쪽으로, 0이면 출발 칸이 그대로 도착 칸이 된다.
-      const steps = Math.abs(spin.value)
-      const dir = spin.value < 0 ? -1 : 1
+      const steps = spin.n
+      const dir = 1
       const seatAt = (k) => candidates[(((startIdx + dir * k) % N) + N) % N]
       const targetIdx = (((startIdx + dir * steps) % N) + N) % N
 
@@ -406,6 +560,7 @@ export function useSeating() {
       }
 
       const seatObj = seats.value.find(s => s.id === candidates[targetIdx].id)
+      releaseStudent(student.id)
       seatObj.studentId = student.id
       seatObj.status = 'occupied'
       student.isAssigned = true

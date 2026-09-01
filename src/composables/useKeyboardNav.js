@@ -6,10 +6,12 @@ import { ref, onMounted, onUnmounted } from 'vue'
 //   방향키            구역 안에서 커서 이동. 가장자리에서 한 번 더 누르면 옆 구역으로 넘어간다.
 //
 //        ┌──────────┬────────────────┐
-//        │          │     toolbar    │   좌석에서 ← 는 명단으로, ↑ 는 툴바로
-//        │ students ├────────────────┤   툴바에서 ← 는 명단으로, ↓ 는 좌석으로
-//        │          │     seats      │   명단에서 ↑ 는 툴바로, → 는 좌석으로
-//        └──────────┴────────────────┘
+//        │          │     toolbar    │   좌석에서 ← 는 행 머리글 → 명단으로
+//        │ students ├────────────────┤   좌석에서 ↑ 는 열 머리글 → 툴바로
+//        │          │     seats      │   툴바에서 ← 는 명단으로, ↓ 는 좌석으로
+//        └──────────┴────────────────┘   명단에서 ↑ 는 툴바로, → 는 좌석으로
+//
+// 좌석 구역의 커서는 r,c 좌표다. r=-1 은 열 머리글 줄, c=-1 은 행 머리글 칸을 뜻한다.
 //   Enter / Space     실행 (메뉴 열기 포함)
 //   Esc               취소 (메뉴 닫기 → 모드 해제 → 학생 선택 해제)
 //
@@ -18,7 +20,14 @@ import { ref, onMounted, onUnmounted } from 'vue'
 
 const ZONES = ['students', 'toolbar', 'seats']
 
-export function useKeyboardNav(seating, { isMenuOpen, onSeatEnter }) {
+// 단 하나뿐인 커서라 모듈 수준에 노출해 둔다. 메뉴에서 '자리를 고르세요' 같은
+// 지시를 내린 뒤 커서를 옮겨야 할 때 쓴다.
+export const navCursor = {
+  toSeats: () => {},
+  toStudents: () => {}
+}
+
+export function useKeyboardNav(seating, { menu, onActivate }) {
   const zone = ref('seats')
   const lastIdx = { students: 0, toolbar: 0, menu: 0 }
   const cursor = { r: 0, c: 0 }
@@ -45,8 +54,16 @@ export function useKeyboardNav(seating, { isMenuOpen, onSeatEnter }) {
     return true
   }
 
+  // r=-1 열 머리글, c=-1 행 머리글, 그 외는 좌석
+  const gridEl = (r, c) => {
+    if (r === -1 && c === -1) return null
+    if (r === -1) return document.querySelector(`[data-axis="col-${c}"]`)
+    if (c === -1) return document.querySelector(`[data-axis="row-${r}"]`)
+    return document.querySelector(`[data-seat="${r}-${c}"]`)
+  }
+
   const focusSeat = (r, c) => {
-    const el = document.querySelector(`[data-seat="${r}-${c}"]`)
+    const el = gridEl(r, c)
     if (!el) return false
     cursor.r = r
     cursor.c = c
@@ -83,8 +100,12 @@ export function useKeyboardNav(seating, { isMenuOpen, onSeatEnter }) {
     const { rows, cols } = seating.gridConfig
     const r = cursor.r + dr
     const c = cursor.c + dc
-    if (c < 0) return focusIn('students', lastIdx.students)   // 왼쪽 끝 → 명단
-    if (r < 0) return focusIn('toolbar', lastIdx.toolbar)     // 위쪽 끝 → 툴바
+    // 머리글 두 줄이 만나는 빈 모서리는 건너뛴다
+    if (r === -1 && c === -1) {
+      return dc < 0 ? focusIn('students', lastIdx.students) : focusIn('toolbar', lastIdx.toolbar)
+    }
+    if (c < -1) return focusIn('students', lastIdx.students)  // 행 머리글보다 왼쪽 → 명단
+    if (r < -1) return focusIn('toolbar', lastIdx.toolbar)    // 열 머리글보다 위 → 툴바
     if (r >= rows || c >= cols) return                        // 오른쪽·아래쪽은 벽
     focusSeat(r, c)
   }
@@ -100,23 +121,12 @@ export function useKeyboardNav(seating, { isMenuOpen, onSeatEnter }) {
     }
   }
 
-  const closeMenu = () => {
-    isMenuOpen.value = false
-    focusIn('toolbar', lastIdx.toolbar)
-  }
+  const closeMenu = () => menu.close()
 
+  // 메뉴 → 진행 중인 지시 → 선택 순으로 하나씩 푼다
   const escape = () => {
-    if (isMenuOpen.value) return closeMenu()
-    if (seating.isSwapMode) {
-      seating.isSwapMode = false
-      seating.swapSourceId = null
-    } else if (seating.isRestrictionMode) {
-      seating.isRestrictionMode = false
-    } else if (seating.isEditMode) {
-      seating.isEditMode = false
-    } else if (seating.selectedStudent) {
-      seating.selectedStudent = null
-    }
+    if (menu.isOpen.value) return closeMenu()
+    seating.cancelPending()
   }
 
   // 다이얼로그가 열려 있거나 글자를 입력 중이면 손대지 않는다
@@ -130,12 +140,12 @@ export function useKeyboardNav(seating, { isMenuOpen, onSeatEnter }) {
     if (busy() || e.ctrlKey || e.metaKey || e.altKey) return
     if (seating.isAnimating && e.key !== 'Escape') return
 
-    const z = isMenuOpen.value ? 'menu' : zone.value
+    const z = menu.isOpen.value ? 'menu' : zone.value
 
     switch (e.key) {
       case 'Tab':
         e.preventDefault()
-        if (isMenuOpen.value) isMenuOpen.value = false
+        if (menu.isOpen.value) menu.close({ restoreFocus: false })
         gotoZone(e.shiftKey ? -1 : 1)
         return
 
@@ -169,9 +179,9 @@ export function useKeyboardNav(seating, { isMenuOpen, onSeatEnter }) {
       case 'Enter':
       case ' ':
         // 버튼은 브라우저가 알아서 누른다. 좌석은 <div>라 여기서 처리한다.
-        if (zone.value === 'seats' && !isMenuOpen.value) {
+        if (zone.value === 'seats' && !menu.isOpen.value && cursor.r >= 0 && cursor.c >= 0) {
           e.preventDefault()
-          onSeatEnter(cursor.r, cursor.c)
+          onActivate(cursor.r, cursor.c)
         }
         return
     }
@@ -185,16 +195,23 @@ export function useKeyboardNav(seating, { isMenuOpen, onSeatEnter }) {
     if (z === 'menu') { lastIdx.menu = items('menu').indexOf(e.target); return }
     zone.value = z
     if (z === 'seats') {
-      const seat = e.target.dataset.seat
+      const { seat, axis } = e.target.dataset
       if (seat) {
         const [r, c] = seat.split('-').map(Number)
         cursor.r = r
         cursor.c = c
+      } else if (axis) {
+        const [kind, i] = axis.split('-')
+        if (kind === 'col') { cursor.r = -1; cursor.c = Number(i) }
+        else { cursor.r = Number(i); cursor.c = -1 }
       }
     } else {
       lastIdx[z] = items(z).indexOf(e.target)
     }
   }
+
+  navCursor.toSeats = () => enterSeats()
+  navCursor.toStudents = () => focusIn('students', lastIdx.students)
 
   onMounted(() => {
     window.addEventListener('keydown', onKeydown)
@@ -205,5 +222,5 @@ export function useKeyboardNav(seating, { isMenuOpen, onSeatEnter }) {
     window.removeEventListener('focusin', onFocusIn)
   })
 
-  return { zone, focusMenuFirst: () => focusIn('menu', 0) }
+  return { zone, focusMenuFirst: () => focusIn('menu', 0), enterSeats }
 }

@@ -27,8 +27,8 @@ const commitRename = () => {
 const KEYS = [
   { keys: 'Tab', what: '구역 이동 (명단 → 툴바 → 좌석)' },
   { keys: '← ↑ ↓ →', what: '커서 이동 · 가장자리에서 한 번 더 누르면 옆 구역으로' },
-  { keys: 'Enter', what: '선택 · 실행 · 메뉴 열기' },
-  { keys: 'Esc', what: '메뉴 닫기 · 모드 해제 · 선택 해제' }
+  { keys: 'Enter', what: '학생 · 좌석 · 행 · 열에서 할 일 메뉴 열기' },
+  { keys: 'Esc', what: '메뉴 닫기 · 진행 중인 지시 취소 · 선택 해제' }
 ]
 
 const confirmRemove = ref(null)

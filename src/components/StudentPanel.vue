@@ -5,6 +5,8 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Textarea } from '@/components/ui/textarea'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger, DialogFooter } from '@/components/ui/dialog'
 import { Plus } from 'lucide-vue-next'
+import { openActionMenu } from '@/composables/useActionMenu'
+import { navCursor } from '@/composables/useKeyboardNav'
 
 const props = defineProps({ seating: Object })
 const isImportOpen = ref(false)
@@ -12,11 +14,60 @@ const rawInput = ref("")
 
 const remaining = computed(() => props.seating.students.filter(s => !s.isAssigned).length)
 
-// 이미 자리를 받은 학생은 고를 수 없다 (금지 지정 모드에서는 예외)
-const pick = (s) => {
-  if (props.seating.isAnimating) return
-  if (s.isAssigned && !props.seating.isRestrictionMode) return
-  props.seating.selectedStudent = props.seating.selectedStudent?.id === s.id ? null : s
+// 학생을 누르면 그 학생으로 무엇을 할지 묻는다.
+// 다만 이미 내려둔 지시가 있으면 메뉴 없이 곧바로 그 지시를 수행한다.
+const pick = (s, el) => {
+  const seating = props.seating
+  if (seating.isAnimating) return
+
+  // 빈 자리에서 '학생 고르기'로 들어온 경우 — 바로 그 자리에 앉힌다
+  if (seating.pendingSeatId) return void seating.placeStudentAt(s, seating.pendingSeatId)
+
+  // 금지 지정 중이면 대상 학생만 갈아탄다
+  if (seating.isRestrictionMode) {
+    seating.selectedStudent = s
+    return
+  }
+
+  seating.placingStudentId = null   // 다른 학생을 열었으면 앞선 '직접 배정'은 무효
+  seating.selectedStudent = s
+  openActionMenu(el, studentMenu(s))
+}
+
+const studentMenu = (s) => {
+  const seating = props.seating
+  const seatId = seating.getStudentSeatId(s.id)
+  const denied = s.deniedSeatIds?.length || 0
+
+  return {
+    title: s.name + (seatId ? ` · ${seating.getSeatCode(seatId)}` : ''),
+    items: [
+      !s.isAssigned && {
+        key: 'spin', label: '무작위 배정 (룰렛)',
+        run: () => seating.assignBySpin(s)
+      },
+      !s.isAssigned && {
+        key: 'place', label: '직접 배정',
+        run: () => { seating.startPlacing(s); navCursor.toSeats() }
+      },
+      s.isAssigned && {
+        key: 'move', label: '자리 옮기기',
+        run: () => { seating.startSwap(seatId); navCursor.toSeats() }
+      },
+      s.isAssigned && {
+        key: 'off', label: '배정 해제', danger: true,
+        run: () => seating.cancelAssignment(seatId)
+      },
+      {
+        key: 'deny', label: '금지 좌석 지정', note: denied ? String(denied) : '',
+        run: () => { seating.selectedStudent = s; seating.isRestrictionMode = true; navCursor.toSeats() }
+      },
+      denied > 0 && {
+        key: 'denyOff', label: '금지 좌석 모두 해제', danger: true,
+        run: () => seating.clearStudentRestrictions(s)
+      }
+    ]
+  }
 }
 
 const handleImport = () => {
@@ -68,11 +119,13 @@ const handleImport = () => {
           <button
             v-for="s in seating.students" :key="s.id"
             data-kb
-            @click="pick(s)"
+            @click="pick(s, $event.currentTarget)"
             :disabled="seating.isAnimating"
-            :aria-disabled="s.isAssigned && !seating.isRestrictionMode"
-            class="w-full h-[54px] px-4 rounded-2xl flex items-center gap-3 text-left transition-all duration-150 disabled:opacity-100 aria-disabled:cursor-default"
-            :class="seating.selectedStudent?.id === s.id ? 'is-picked' : (s.isAssigned ? 'is-done' : 'is-idle')"
+            class="w-full h-[54px] px-4 rounded-2xl flex items-center gap-3 text-left transition-all duration-150 disabled:opacity-100"
+            :class="[
+              seating.selectedStudent?.id === s.id ? 'is-picked' : (s.isAssigned ? 'is-done' : 'is-idle'),
+              seating.pendingSeatId ? 'is-target' : ''
+            ]"
           >
             <span class="text-[21px] font-bold leading-none truncate flex-1">{{ s.name }}</span>
 
@@ -97,14 +150,29 @@ const handleImport = () => {
 
 <style scoped>
 .is-idle { background: transparent; color: var(--c-ink); }
-.is-idle:hover { background: var(--c-accent-soft); }
-
 .is-done { background: transparent; color: var(--c-muted); }
+
+/* 어떤 상태든 마우스가 올라간 행은 보여야 한다 (배정된 학생도 고를 수 있으므로) */
+.is-idle:hover,
+.is-done:hover { background: var(--c-accent-soft); color: var(--c-ink); }
 
 .is-picked {
   background: var(--grad);
   color: #fff;
   box-shadow: var(--shadow-hot);
+}
+.is-picked:hover { filter: brightness(1.06); }
+
+/* 빈 자리에 앉힐 학생을 고르는 중 — 누를 대상이 카드처럼 떠오른다 */
+.is-target:hover {
+  background: var(--c-surface);
+  color: var(--c-ink);
+  box-shadow: inset 0 0 0 2px var(--c-primary), var(--shadow-md);
+}
+.is-target.is-picked:hover {
+  background: var(--grad);
+  color: #fff;
+  box-shadow: inset 0 0 0 2px var(--c-surface), var(--shadow-hot);
 }
 
 .badge {

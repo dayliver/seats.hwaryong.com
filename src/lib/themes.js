@@ -4,7 +4,8 @@
 // accent   : 그라데이션의 두 번째 색 (primary보다 밝고 부드러운 톤)
 // strong   : 배정된 좌석처럼 넓게 칠하는 어두운 면 (ink보다 한 단계 밝게)
 // bg       : 화면(캔버스) 바탕
-// shell    : 캔버스 바깥 레터박스 — bg보다 한 단계 진하게 두어 화면 경계가 보이게 한다
+// shell    : 캔버스 바깥 레터박스 — bg보다 한 단계 진하게 두어 화면 경계가 보이게 한다.
+//            여기에는 옅은 모눈을 깔아 '쓰지 않는 공간'으로 읽히게 한다.
 
 export const THEMES = [
   {
@@ -70,6 +71,8 @@ export function applyTheme(id) {
   s.setProperty('--c-line', t.line)
   s.setProperty('--c-bg', t.bg)
   s.setProperty('--c-shell', t.shell)
+  s.setProperty('--c-grid', `rgba(${rgb(t.ink)}, 0.07)`)
+  s.setProperty('--c-grid-strong', `rgba(${rgb(t.ink)}, 0.11)`)
 
   s.setProperty('--grad', `linear-gradient(135deg, ${t.primary} 0%, ${t.accent} 100%)`)
   s.setProperty('--shadow-sm', `0 2px 8px -2px rgba(${rgb(t.ink)}, 0.12)`)

@@ -1,7 +1,7 @@
 {
   "name": "seats.hwaryong.com",
   "private": true,
-  "version": "0.0.1-alpha1",
+  "version": "0.0.1-alpha2",
   "type": "module",
   "scripts": {
     "dev": "vite",

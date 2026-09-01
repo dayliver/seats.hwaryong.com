@@ -4,6 +4,7 @@ import { useSeating } from '@/composables/useSeating'
 import StudentPanel from '@/components/StudentPanel.vue'
 import SeatGrid from '@/components/SeatGrid.vue'
 import SpinOverlay from '@/components/SpinOverlay.vue'
+import ActionMenu from '@/components/ActionMenu.vue'
 
 // 비즈니스 로직 주입 (composables에서 가져옴)
 const seating = useSeating()
@@ -36,8 +37,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="fixed inset-0 flex items-center justify-center overflow-hidden"
-         style="background: var(--c-shell)">
+  <div class="app-shell fixed inset-0 flex items-center justify-center overflow-hidden">
     
     <div 
       id="presentation-root"
@@ -52,6 +52,8 @@ onUnmounted(() => {
       <StudentPanel :seating="seating" />
 
       <SeatGrid :seating="seating" />
+
+      <ActionMenu />
 
       <Transition name="spin-fade">
         <SpinOverlay v-if="seating.spin.active" :spin="seating.spin" />
@@ -73,6 +75,19 @@ body {
   padding: 0;
   cursor: default;
   background: var(--c-shell);
+}
+
+/* 캔버스 바깥은 쓰지 않는 공간이라는 뜻으로 옅은 모눈을 깐다.
+   40px 잔선 위에 200px마다 조금 진한 선을 겹쳐 제도판처럼 보이게 했다. */
+.app-shell {
+  background-color: var(--c-shell);
+  background-image:
+    linear-gradient(to right, var(--c-grid-strong) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--c-grid-strong) 1px, transparent 1px),
+    linear-gradient(to right, var(--c-grid) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--c-grid) 1px, transparent 1px);
+  background-size: 200px 200px, 200px 200px, 40px 40px, 40px 40px;
+  background-position: center center;
 }
 
 /* 배정 연출 오버레이 등장/퇴장 */
