@@ -36,6 +36,7 @@ const doRemove = (id) => {
   props.seating.removeRoster(id)
   confirmRemove.value = null
 }
+
 </script>
 
 <template>

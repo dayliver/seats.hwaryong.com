@@ -17,7 +17,10 @@ function renderCell(seating, r, c) {
   return '<div class="cell empty"></div>'
 }
 
-// flipped=true 이면 행/열을 모두 역순으로 (교사 시점 ↔ 학생 시점은 180° 회전)
+// flipped=true 이면 행/열을 모두 역순으로.
+//
+// 화면 격자는 칠판이 위(1행이 맨 앞줄)인 '학생 시점'이다.
+// 교사는 칠판 앞에서 학생들을 마주 보므로 앞뒤·좌우가 모두 뒤집힌 180° 회전이 된다.
 function renderGrid(seating, flipped) {
   const { rows, cols } = seating.gridConfig
   const rowIdx = Array.from({ length: rows }, (_, i) => (flipped ? rows - 1 - i : i))
@@ -163,14 +166,14 @@ export function openPrintView(seating) {
 
     <section>
       <h2>교사 시점</h2>
-      ${renderGrid(seating, false)}
-      <div class="podium">교탁</div>
+      ${renderGrid(seating, true)}
+      <div class="podium">칠판</div>
     </section>
 
     <section>
       <h2>학생 시점</h2>
-      <div class="podium">교탁</div>
-      ${renderGrid(seating, true)}
+      <div class="podium">칠판</div>
+      ${renderGrid(seating, false)}
     </section>
   </div>
 </body>

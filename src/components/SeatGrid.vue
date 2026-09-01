@@ -3,8 +3,10 @@ import { computed, ref, nextTick, useTemplateRef } from 'vue'
 import { onClickOutside, useFullscreen } from '@vueuse/core'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
-import { Printer, Menu, LayoutGrid, ShieldOff, UserX, Trash2, ArrowLeftRight, X, Settings, Maximize, Minimize } from 'lucide-vue-next'
+import { Printer, Menu, LayoutGrid, ShieldOff, UserX, Trash2, ArrowLeftRight, X, Settings, Maximize, Minimize, Save, FolderOpen, Share2 } from 'lucide-vue-next'
 import SettingsDialog from '@/components/SettingsDialog.vue'
+import SnapshotsDialog from '@/components/SnapshotsDialog.vue'
+import ShareDialog from '@/components/ShareDialog.vue'
 import { openPrintView } from '@/lib/print'
 import { useKeyboardNav, navCursor } from '@/composables/useKeyboardNav'
 import { actionMenu, openActionMenu, closeActionMenu } from '@/composables/useActionMenu'
@@ -155,6 +157,15 @@ const activateAxis = (type, index, el) => {
         run: () => seating.clearLineAssignments(type, index)
       },
       {
+        key: 'shift', kind: 'arrows', label: '한 칸씩 밀기',
+        options: ['←', '→', '↑', '↓'].map(d => ({
+          key: 'shift' + d, glyph: d,
+          title: d + ' 방향으로 한 칸',
+          disabled: !seating.canShiftLine(type, index, d),
+          run: () => seating.shiftLine(type, index, d)
+        }))
+      },
+      {
         key: 'swap', label: `다른 ${type === 'row' ? '행' : '열'}과 통째 교체`,
         disabled: info.occupied === 0,
         run: () => seating.startLineSwap(type, index)
@@ -219,6 +230,26 @@ const openMenu = async () => {
 const confirmKind = ref(null)
 const isSettingsOpen = ref(false)
 
+// --- 배치 저장 ---
+const isSaveOpen = ref(false)
+const isLoadOpen = ref(false)
+const isShareOpen = ref(false)
+const saveName = ref('')
+const saveDone = ref(false)
+
+const openSave = () => {
+  isMenuOpen.value = false
+  saveName.value = props.seating.defaultSnapshotName()
+  saveDone.value = false
+  isSaveOpen.value = true
+}
+
+const doSave = () => {
+  if (!props.seating.saveSnapshot(saveName.value)) return
+  saveDone.value = true
+  setTimeout(() => { isSaveOpen.value = false }, 700)
+}
+
 const CONFIRMS = {
   assignments: {
     title: '전체 배정 취소',
@@ -244,7 +275,6 @@ const acceptConfirm = () => { confirmData.value?.action(); confirmKind.value = n
 
     <div class="flex justify-between items-center gap-4 pt-1">
       <div class="flex items-center gap-4 min-w-0">
-        <h2 class="text-[30px] font-black leading-none shrink-0">우리 교실</h2>
         <Transition name="hint">
           <span v-if="hint" class="ui-pill truncate"
                 style="background: var(--c-accent-soft); color: var(--c-primary-deep)">{{ hint }}</span>
@@ -298,6 +328,24 @@ const acceptConfirm = () => { confirmData.value?.action(); confirmKind.value = n
 
           <Transition name="menu">
             <div v-if="isMenuOpen" data-zone="menu" class="ui-card absolute right-0 top-full mt-3 w-[320px] z-50 p-2.5">
+              <button class="menu-item" data-kb @click="openSave">
+                <Save class="w-[18px] h-[18px] shrink-0 opacity-45" />
+                <span class="flex-1">배치 저장하기</span>
+                <span v-if="seating.snapshots.length" class="text-[15px] opacity-45">{{ seating.snapshots.length }}</span>
+              </button>
+
+              <button class="menu-item" data-kb @click="runMenu(() => { isLoadOpen = true })">
+                <FolderOpen class="w-[18px] h-[18px] shrink-0 opacity-45" />
+                <span class="flex-1">배치 불러오기</span>
+                <span v-if="seating.snapshots.length" class="text-[15px] opacity-45">{{ seating.snapshots.length }}</span>
+              </button>
+
+              <div class="h-px my-2 mx-2" style="background: var(--c-line)" />
+
+              <button class="menu-item" data-kb @click="runMenu(() => { isShareOpen = true })">
+                <Share2 class="w-[18px] h-[18px] shrink-0 opacity-45" /> 링크로 보내기
+              </button>
+
               <button class="menu-item" data-kb @click="runMenu(() => openPrintView(seating))">
                 <Printer class="w-[18px] h-[18px] shrink-0 opacity-45" /> 인쇄
               </button>
@@ -344,6 +392,8 @@ const acceptConfirm = () => { confirmData.value?.action(); confirmKind.value = n
         </div>
       </div>
     </div>
+
+    <div class="board">칠판</div>
 
     <div class="flex-1 min-h-0">
       <div class="grid gap-2.5 w-full h-full" :style="gridStyle" data-zone="seats">
@@ -428,9 +478,36 @@ const acceptConfirm = () => { confirmData.value?.action(); confirmKind.value = n
     </div>
 
     <SettingsDialog v-model:open="isSettingsOpen" :seating="seating" />
+    <SnapshotsDialog v-model:open="isLoadOpen" :seating="seating" />
+    <ShareDialog v-model:open="isShareOpen" :seating="seating" />
+
+    <Dialog v-model:open="isSaveOpen">
+      <DialogContent class="!rounded-[24px] !border-0 !p-9 !gap-5 sm:max-w-xl" style="box-shadow: var(--shadow-md)">
+        <DialogHeader>
+          <DialogTitle class="text-[25px] font-black leading-tight">배치 저장하기</DialogTitle>
+          <DialogDescription class="text-[16px] leading-relaxed pt-1" style="color: var(--c-ink-soft)">
+            지금 자리 배치를 이름 붙여 남깁니다. 나중에 설정에서 그대로 되돌릴 수 있습니다.
+          </DialogDescription>
+        </DialogHeader>
+
+        <input
+          v-model="saveName" class="name-field"
+          placeholder="배치 이름" @keyup.enter="doSave"
+        />
+
+        <p v-if="seating.saveError" class="text-[15px] font-bold" style="color: var(--c-primary)">
+          {{ seating.saveError }}
+        </p>
+
+        <DialogFooter class="gap-2.5">
+          <Button variant="ghost" @click="isSaveOpen = false">취소</Button>
+          <Button :disabled="saveDone" @click="doSave">{{ saveDone ? '저장했습니다' : '저장' }}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
 
     <Dialog :open="confirmKind !== null" @update:open="v => { if (!v) confirmKind = null }">
-      <DialogContent class="!rounded-[22px] !border-0 !p-8 !gap-5 sm:max-w-md" style="box-shadow: var(--shadow-md)">
+      <DialogContent class="!rounded-[24px] !border-0 !p-9 !gap-5 sm:max-w-lg" style="box-shadow: var(--shadow-md)">
         <DialogHeader>
           <DialogTitle class="text-[26px] font-black leading-tight">{{ confirmData?.title }}</DialogTitle>
           <DialogDescription class="text-[17px] leading-relaxed pt-1" style="color: var(--c-ink-soft)">
@@ -447,6 +524,38 @@ const acceptConfirm = () => { confirmData.value?.action(); confirmKind.value = n
 </template>
 
 <style scoped>
+.name-field {
+  width: 100%;
+  height: 52px;
+  padding: 0 20px;
+  border-radius: 16px;
+  border: 0;
+  outline: none;
+  font-family: inherit;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--c-ink);
+  background: var(--c-bg);
+  box-shadow: inset 0 0 0 1.5px var(--c-line);
+}
+.name-field:focus { box-shadow: inset 0 0 0 2px var(--c-primary); }
+
+/* 교실 앞쪽. 화면 격자는 칠판이 위인 학생 시점이다. */
+.board {
+  width: 46%;
+  min-width: 260px;
+  margin: 0 auto;
+  padding: 9px 0;
+  border-radius: 999px;
+  background: var(--c-strong);
+  color: #fff;
+  text-align: center;
+  font-size: 19px;
+  font-weight: 900;
+  letter-spacing: 0.42em;
+  text-indent: 0.42em;
+}
+
 .axis {
   display: flex;
   align-items: center;

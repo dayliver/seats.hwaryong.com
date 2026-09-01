@@ -1,0 +1,16 @@
+{
+  "name": "교실 좌석 배치",
+  "short_name": "좌석 배치",
+  "description": "룰렛을 돌려 교실 자리를 정합니다.",
+  "lang": "ko",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#fdf5f2",
+  "theme_color": "#f40752",
+  "icons": [
+    { "src": "/favicon.svg", "type": "image/svg+xml", "sizes": "any" },
+    { "src": "/favicon-32.png", "type": "image/png", "sizes": "32x32" },
+    { "src": "/apple-touch-icon.png", "type": "image/png", "sizes": "180x180" }
+  ]
+}

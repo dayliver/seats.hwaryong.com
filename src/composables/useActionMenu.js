@@ -40,7 +40,7 @@ export function openActionMenu(el, { title, hint = '', items }) {
   state.x = Math.max(EDGE, Math.min(left, CANVAS_W - MENU_W - EDGE))
 
   // 아래로 펼쳤을 때 캔버스를 벗어나면 위로 뒤집는다
-  const guess = 62 + state.items.length * 52 + (hint ? 34 : 0)
+  const guess = 62 + state.items.reduce((h, i) => h + (i.kind === 'arrows' ? 86 : 52), 0) + (hint ? 34 : 0)
   if (bottom + 10 + guess > CANVAS_H - EDGE) {
     state.y = top - 10
     state.flipUp = true

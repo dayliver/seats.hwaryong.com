@@ -39,17 +39,31 @@ const run = (item) => {
     <p class="px-3 pt-1.5 pb-2 text-[13px] font-bold tracking-[0.14em] uppercase truncate"
        style="color: var(--c-muted)">{{ actionMenu.title }}</p>
 
-    <button
-      v-for="item in actionMenu.items" :key="item.key"
-      data-kb
-      class="act-item"
-      :class="item.danger ? 'act-item--danger' : ''"
-      :disabled="item.disabled"
-      @click="run(item)"
-    >
-      <span class="flex-1 truncate">{{ item.label }}</span>
-      <span v-if="item.note" class="text-[14px] opacity-50 shrink-0">{{ item.note }}</span>
-    </button>
+    <template v-for="item in actionMenu.items" :key="item.key">
+      <!-- 방향 넷을 한 줄에 묶어 메뉴가 길어지지 않게 한다 -->
+      <div v-if="item.kind === 'arrows'" class="px-3 py-2">
+        <p class="text-[15px] font-bold mb-2" style="color: var(--c-ink-soft)">{{ item.label }}</p>
+        <div class="flex gap-1.5">
+          <button
+            v-for="o in item.options" :key="o.glyph"
+            data-kb class="arrow-btn" :disabled="o.disabled" :title="o.title"
+            @click="run(o)"
+          >{{ o.glyph }}</button>
+        </div>
+      </div>
+
+      <button
+        v-else
+        data-kb
+        class="act-item"
+        :class="item.danger ? 'act-item--danger' : ''"
+        :disabled="item.disabled"
+        @click="run(item)"
+      >
+        <span class="flex-1 truncate">{{ item.label }}</span>
+        <span v-if="item.note" class="text-[14px] opacity-50 shrink-0">{{ item.note }}</span>
+      </button>
+    </template>
 
     <p v-if="actionMenu.hint" class="px-3 pt-2 pb-1 text-[13px] font-bold leading-snug"
        style="color: var(--c-muted)">{{ actionMenu.hint }}</p>
@@ -73,4 +87,17 @@ const run = (item) => {
 .act-item:hover:not(:disabled) { background: var(--c-accent-soft); }
 .act-item:disabled { opacity: 0.35; cursor: default; }
 .act-item--danger { color: var(--c-primary); }
+
+.arrow-btn {
+  flex: 1;
+  height: 44px;
+  border-radius: 12px;
+  background: var(--c-bg);
+  color: var(--c-ink);
+  font-size: 20px;
+  font-weight: 700;
+  transition: background-color 140ms ease, color 140ms ease;
+}
+.arrow-btn:hover:not(:disabled) { background: var(--c-primary); color: #fff; }
+.arrow-btn:disabled { opacity: 0.3; cursor: default; }
 </style>

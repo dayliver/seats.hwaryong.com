@@ -1,7 +1,7 @@
 {
   "name": "seats.hwaryong.com",
   "private": true,
-  "version": "0.0.1-alpha2",
+  "version": "0.0.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -15,6 +15,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-vue-next": "^1.0.0",
+    "qrcode-generator": "^2.0.4",
     "reka-ui": "^2.9.2",
     "tailwind-merge": "^3.5.0",
     "tailwindcss": "^4.2.2",

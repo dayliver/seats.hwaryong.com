@@ -1,5 +1,7 @@
 import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { applyTheme, DEFAULT_THEME, getTheme } from '@/lib/themes'
+import * as store from '@/lib/snapshots'
+import { readShareLink, clearShareHash } from '@/lib/share'
 
 const STORE_KEY = 'seats-data'
 const newId = (p) => `${p}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
@@ -73,6 +75,10 @@ export function useSeating() {
   const rosters = ref([])
   const activeRosterId = ref(null)
   const themeId = ref(DEFAULT_THEME)
+
+  // 이름 붙여 굳혀 둔 배치 (자동 저장과 별도 저장소)
+  const snapshots = ref([])
+  const saveError = ref(null)
 
   // 진행 중인 지시
   const placingStudentId = ref(null)   // '직접 배정' — 다음에 고르는 빈 자리에 앉힌다
@@ -173,6 +179,47 @@ export function useSeating() {
       sa.status = sa.studentId ? 'occupied' : 'available'
       sb.status = sb.studentId ? 'occupied' : 'available'
     }
+  }
+
+  // 줄을 한 칸 민다.
+  //   줄과 나란한 방향(행의 ←→, 열의 ↑↓)  : 줄 안에서 한 칸씩 밀고 끝은 처음으로 돌아온다
+  //   줄을 가로지르는 방향(행의 ↑↓, 열의 ←→) : 옆 줄과 통째로 맞바꾼다
+  const shiftIsAlong = (type, dir) =>
+    type === 'row' ? (dir === '←' || dir === '→') : (dir === '↑' || dir === '↓')
+
+  const shiftTarget = (type, index, dir) => {
+    const max = type === 'row' ? gridConfig.rows : gridConfig.cols
+    const next = index + (dir === '↓' || dir === '→' ? 1 : -1)
+    return next >= 0 && next < max ? next : null
+  }
+
+  const canShiftLine = (type, index, dir) => {
+    if (shiftIsAlong(type, dir)) {
+      return lineSeats(type, index).filter(s => s.status !== 'forbidden').length >= 2
+    }
+    return shiftTarget(type, index, dir) !== null
+  }
+
+  const shiftLine = (type, index, dir) => {
+    if (!canShiftLine(type, index, dir)) return
+
+    if (shiftIsAlong(type, dir)) {
+      // 없는 자리는 건너뛰고 남은 칸들만 돌린다
+      const list = lineSeats(type, index).filter(s => s.status !== 'forbidden')
+      const ids = list.map(s => s.studentId)
+      const forward = dir === '→' || dir === '↓'
+      const rotated = forward
+        ? [ids[ids.length - 1], ...ids.slice(0, -1)]
+        : [...ids.slice(1), ids[0]]
+      list.forEach((seat, i) => {
+        seat.studentId = rotated[i]
+        seat.status = seat.studentId ? 'occupied' : 'available'
+      })
+      return
+    }
+
+    lineSwapFrom.value = { type, index }
+    executeLineSwap(type, shiftTarget(type, index, dir))
   }
 
   // 메뉴 문구를 정할 때 쓰는 줄 요약
@@ -342,6 +389,23 @@ export function useSeating() {
     }
 
     applyTheme(themeId.value)
+    snapshots.value = store.listSnapshots()
+  }
+
+  // 주소에 공유 링크가 붙어 있으면 새 명단으로 받아 연다.
+  // 기존 명단을 덮지 않으므로 실수로 링크를 열어도 잃는 게 없다.
+  const openSharedLink = async () => {
+    const shared = await readShareLink()
+    if (!shared) return false
+    clearShareHash()
+    stash()
+    const r = blankRoster(shared.name)
+    r.gridConfig = shared.gridConfig
+    r.students = shared.students
+    r.seats = shared.seats
+    rosters.value.push(r)
+    openRoster(r)
+    return true
   }
 
   // --- 명단 관리 ---
@@ -397,13 +461,104 @@ export function useSeating() {
     if (wasActive) openRoster(rosters.value[Math.min(idx, rosters.value.length - 1)])
   }
 
+  // --- 저장된 배치 ---
+  const snapshotOfNow = (name) => ({
+    name,
+    rosterName: rosters.value.find(r => r.id === activeRosterId.value)?.name || '',
+    gridConfig: { rows: gridConfig.rows, cols: gridConfig.cols },
+    students: JSON.parse(JSON.stringify(students.value)),
+    seats: JSON.parse(JSON.stringify(seats.value))
+  })
+
+  const defaultSnapshotName = () => {
+    const r = rosters.value.find(x => x.id === activeRosterId.value)
+    const d = new Date()
+    return `${r?.name || '배치'} · ${d.getMonth() + 1}월 ${d.getDate()}일`
+  }
+
+  const apply = (res) => {
+    if (res.ok) { snapshots.value = res.snapshots; saveError.value = null; return true }
+    saveError.value = res.reason === 'quota'
+      ? '저장 공간이 가득 찼습니다. 오래된 배치를 지우거나 파일로 내보낸 뒤 다시 시도하세요.'
+      : '저장하지 못했습니다.'
+    return false
+  }
+
+  const saveSnapshot = (name) => apply(store.addSnapshot(snapshotOfNow((name || '').trim() || defaultSnapshotName())))
+  const deleteSnapshot = (id) => apply(store.removeSnapshot(id))
+  const renameSnapshot = (id, name) => apply(store.renameSnapshot(id, name))
+
+  // 배치를 되돌린다. 지금 명단을 덮어쓰거나, 새 명단으로 들여온다.
+  const restoreSnapshot = (id, { asNew = false } = {}) => {
+    const snap = snapshots.value.find(s => s.id === id)
+    if (!snap || isAnimating.value) return false
+
+    const payload = {
+      gridConfig: { ...(snap.gridConfig || { rows: 6, cols: 6 }) },
+      students: JSON.parse(JSON.stringify(snap.students || [])),
+      seats: JSON.parse(JSON.stringify(snap.seats || []))
+    }
+    // 좌석과 학생의 배정 표시가 어긋나 있을 수 있으니 좌석을 기준으로 다시 맞춘다
+    const seated = new Set(payload.seats.filter(s => s.status === 'occupied').map(s => s.studentId))
+    payload.students.forEach(st => { st.isAssigned = seated.has(st.id) })
+
+    if (asNew) {
+      stash()
+      const r = blankRoster(snap.name)
+      Object.assign(r, payload)
+      rosters.value.push(r)
+      openRoster(r)
+    } else {
+      const cur = rosters.value.find(r => r.id === activeRosterId.value)
+      if (!cur) return false
+      Object.assign(cur, payload)
+      openRoster(cur)
+    }
+    return true
+  }
+
+  // --- 파일로 주고받기 ---
+  const exportFile = ({ withRosters = true, snapshotId = null } = {}) => {
+    stash()
+    const picked = snapshotId ? snapshots.value.filter(s => s.id === snapshotId) : snapshots.value
+    const doc = store.buildExport({
+      rosters: withRosters ? JSON.parse(JSON.stringify(rosters.value)) : [],
+      snapshots: JSON.parse(JSON.stringify(picked))
+    })
+    store.downloadJson(doc, `교실좌석배치-${store.fileStamp()}.json`)
+  }
+
+  const importFile = (text) => {
+    const res = store.parseImport(text)
+    if (!res.ok) {
+      saveError.value = res.reason === 'kind'
+        ? '이 앱에서 내보낸 파일이 아닙니다.'
+        : '파일을 읽지 못했습니다.'
+      return false
+    }
+    if (res.snapshots.length) {
+      apply(store.putSnapshots([
+        ...res.snapshots.map(s => ({ ...s, id: newId('snap') })),
+        ...snapshots.value
+      ]))
+    }
+    if (res.rosters.length) {
+      stash()
+      const added = res.rosters.map(r => ({ ...r, id: newId('roster') }))
+      rosters.value.push(...added)
+      openRoster(added[0])
+    }
+    saveError.value = null
+    return true
+  }
+
   const setTheme = (id) => {
     themeId.value = applyTheme(id).id
   }
 
   const getStudentName = (id) => students.value.find(s => s.id === id)?.name || ''
 
-  onMounted(loadData)
+  onMounted(async () => { loadData(); await openSharedLink() })
 
   // 저장할 때 rosters를 건드리면 watcher가 다시 돌므로, 쓰기용 사본만 만든다
   watch([rosters, activeRosterId, students, seats, gridConfig, themeId], () => {
@@ -429,9 +584,12 @@ export function useSeating() {
     isSwapMode, swapSourceId, spin, lastAssignedSeatId,
     placingStudentId, pendingSeatId, lineSwapFrom,
     lineSeats, lineInfo, setLineForbidden, clearLineAssignments,
-    startLineSwap, executeLineSwap,
+    startLineSwap, executeLineSwap, shiftLine, canShiftLine,
     toggleSeatForbidden, startPlacing, startPickingFor, cancelPending, releaseStudent,
     rosters, activeRosterId, themeId,
+    snapshots, saveError, defaultSnapshotName,
+    saveSnapshot, deleteSnapshot, renameSnapshot, restoreSnapshot,
+    exportFile, importFile, openSharedLink,
     switchRoster, addRoster, duplicateRoster, renameRoster, removeRoster, setTheme,
     activeRoster: computed(() => rosters.value.find(r => r.id === activeRosterId.value) || null),
     initGrid, clearAllAssignments, cancelAssignment, startSwap, executeSwap,

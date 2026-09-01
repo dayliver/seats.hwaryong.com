@@ -42,6 +42,8 @@ src/
   composables/useActionMenu.js   학생·좌석·행·열을 Enter하면 뜨는 상황별 메뉴 (단일 인스턴스)
   lib/themes.js               테마 팔레트. 색의 단일 출처, CSS 변수로 주입
   lib/print.js                인쇄용 새 창 HTML 생성
+  lib/snapshots.js            이름 붙여 굳혀 둔 배치 (localStorage, 자동 저장과 키 분리)
+  lib/share.js                배치를 링크 하나로 (공유 전용 최소 형식 + deflate + base64url)
   components/
     StudentPanel.vue          왼쪽 명단
     SeatGrid.vue              좌석 격자 + 헤더 + 햄버거 메뉴
@@ -68,6 +70,20 @@ src/
 ```
 
 `status` 는 `available` / `occupied` / `forbidden`.
+
+저장된 배치는 `seats-snapshots` 에 따로 담는다. 한쪽이 망가져도 다른 쪽은 살아남게
+키를 나눴다. 한 스냅샷이 약 7KB라 localStorage 5MB면 수백 개가 들어간다 —
+IndexedDB는 이 크기에서 얻을 게 없어 쓰지 않았다. 다만 localStorage는 브라우저
+기록 삭제 한 번에 사라지므로, JSON 파일 내보내기가 진짜 안전장치다.
+
+### 공유 링크
+
+저장 형식을 그대로 담으면 30명 기준 4.9KB → 압축해도 1,052자라 QR에 넣기 버겁다.
+그래서 공유용 최소 형식을 따로 뒀다 — `1|행|열|명단이름|이름,이름,…|좌석.좌석.…`
+(좌석 한 칸은 `-` 빈자리 / `x` 없는 자리 / 36진수 학생 번호). 같은 학급이 390B가 되고
+deflate-raw + base64url을 거쳐 링크 전체가 **약 420자**로 떨어진다. QR 버전 20에도,
+카카오톡·문자·mailto 본문에도 들어간다. 압축은 브라우저 기본 `CompressionStream`을 써
+라이브러리가 필요 없다. 금지 좌석 설정은 담지 않는다 (공유받는 쪽에 의미가 없다).
 version 1(명단 하나짜리 평면 구조)은 첫 실행 때 자동으로 명단 하나로 옮겨진다.
 
 ### 배정 규칙
