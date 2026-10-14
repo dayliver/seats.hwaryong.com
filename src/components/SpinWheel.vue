@@ -1,39 +1,49 @@
 <script setup>
-// 원형 룰렛. 눈금은 숫자일 수도, 방향 화살표일 수도 있다.
-// value가 정해지면 그 칸이 위쪽 바늘에 오도록 여러 바퀴 돌며 감속하고,
-// 멈춘 뒤 가운데 원에 결과를 크게 띄운다.
 import { ref, watch, onUnmounted, computed } from 'vue'
+import arrowRight from '../../resources/directions/136479.svg'
+import arrowDown from '../../resources/directions/178239.svg'
+import arrowLeft from '../../resources/directions/314697.svg'
+import arrowUp from '../../resources/directions/398217.svg'
+import arrowRightAlt from '../../resources/directions/796413.svg'
+import arrowDownAlt from '../../resources/directions/712893.svg'
+import arrowLeftAlt from '../../resources/directions/974631.svg'
+import arrowUpAlt from '../../resources/directions/932871.svg'
 
 const props = defineProps({
-  slots: { type: Array, default: () => [] },              // 눈금 라벨 목록
-  value: { type: [String, Number], default: null },       // 멈출 눈금
+  slots: { type: Array, default: () => [] },
+  value: { type: [String, Number], default: null },
   size: { type: Number, default: 420 }
 })
 
 const TURNS = 5
 const SPIN_MS = 1900
-
-// 내부 좌표는 고정하고 바깥 크기만 CSS로 줄인다
 const BOX = 440
 const CX = 220
 const CY = 240
 const R = 200
 const LABEL_R = 148
 
-const ARROW_ROT = { '→': 0, '↓': 90, '←': 180, '↑': 270 }
-const isArrow = (v) => v in ARROW_ROT
+const ARROW_ASSETS = {
+  '→': arrowRight,
+  '↓': arrowDown,
+  '←': arrowLeft,
+  '↑': arrowUp,
+  '→-alt': arrowRightAlt,
+  '↓-alt': arrowDownAlt,
+  '←-alt': arrowLeftAlt,
+  '↑-alt': arrowUpAlt
+}
+const isArrow = (v) => !!ARROW_ASSETS[v]
 
 const count = computed(() => Math.max(props.slots.length, 1))
 const sweep = computed(() => 360 / count.value)
 
-// 눈금이 많아지면 글자가 부채꼴 폭을 넘지 않도록 줄인다
 const fontSize = computed(() => {
   const arc = (2 * Math.PI * LABEL_R) / count.value
   const digits = Math.max(...props.slots.map(s => String(s).length), 1)
   return Math.round(Math.max(11, Math.min(52, (arc * 0.9) / (0.62 * digits))))
 })
 
-// 위(12시)를 0°로 두고 시계방향 i번째 칸
 function sector(i) {
   const a0 = (i * sweep.value - 90) * Math.PI / 180
   const a1 = ((i + 1) * sweep.value - 90) * Math.PI / 180
@@ -86,15 +96,19 @@ const wheelStyle = computed(() => ({
       <g :style="wheelStyle">
         <circle class="ring" :cx="CX" :cy="CY" :r="R + 7" />
 
-        <!-- 눈금이 하나뿐이면 부채꼴 대신 온전한 원 -->
         <circle v-if="count === 1" class="slot slot--0" :cx="CX" :cy="CY" :r="R" />
         <path v-for="w in wedges" v-else :key="w.key" :d="w.d" class="slot" :class="`slot--${w.skin}`" />
 
         <g v-for="w in wedges" :key="'l' + w.key" :transform="`rotate(${w.rot} ${w.x} ${w.y})`">
-          <!-- 방향 눈금: 오른쪽을 향한 도형을 돌려 쓴다 -->
-          <g v-if="isArrow(w.label)" :transform="`translate(${w.x} ${w.y}) rotate(${ARROW_ROT[w.label]}) scale(0.62) translate(-50 -50)`">
-            <path class="glyph" :class="`num--${w.skin}`" d="M8 42 h48 v-22 l36 30 -36 30 v-22 h-48 z" />
-          </g>
+          <image
+            v-if="isArrow(w.label)"
+            :href="ARROW_ASSETS[w.label]"
+            :x="w.x - 18"
+            :y="w.y - 18"
+            width="36"
+            height="36"
+            class="arrow-mark"
+          />
           <text
             v-else :x="w.x" :y="w.y"
             text-anchor="middle" dominant-baseline="central"
@@ -105,14 +119,18 @@ const wheelStyle = computed(() => ({
         </g>
       </g>
 
-      <!-- 가운데 결과 원 -->
       <circle class="ring" :cx="CX" :cy="CY" r="76" />
       <circle class="hub" :cx="CX" :cy="CY" r="66" />
 
-      <g v-if="settled && isArrow(value)"
-         :transform="`translate(${CX} ${CY}) rotate(${ARROW_ROT[value]}) scale(0.86) translate(-50 -50)`">
-        <path class="hub-num is-on value-pop" d="M8 42 h48 v-22 l36 30 -36 30 v-22 h-48 z" />
-      </g>
+      <image
+        v-if="settled && isArrow(value)"
+        :href="ARROW_ASSETS[value]"
+        :x="CX - 26"
+        :y="CY - 26"
+        width="52"
+        height="52"
+        class="hub-arrow value-pop"
+      />
       <text
         v-else
         :x="CX" :y="CY + 4"
@@ -122,7 +140,6 @@ const wheelStyle = computed(() => ({
         class="hub-num" :class="settled ? 'is-on value-pop' : ''"
       >{{ settled ? value : '?' }}</text>
 
-      <!-- 위쪽 바늘 -->
       <polygon class="ring" points="220,44 195,0 245,0" />
     </svg>
   </div>

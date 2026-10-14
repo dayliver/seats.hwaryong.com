@@ -15,40 +15,94 @@ const blankRoster = (name) => ({
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms))
 
-// 룰렛 셋을 돌린다.
-//   ① 칸수     : 눈금이 '지금 앉을 수 있는 자리 수'만큼. 1~N이 후보를 정확히
-//                한 번씩 덮으므로 어느 자리든 똑같은 확률로 나온다.
-//   ② 첫 방향  : 줄을 따라 어느 쪽으로 세어 갈지 (상하좌우)
-//   ③ 줄 끝 방향 : 줄이 끝났을 때 어느 줄로 넘어갈지
-// ②와 ③은 서로 수직이어야 하므로, ②가 멈춘 뒤 ③의 눈금을 두 갈래로 좁힌다.
-const DIR_FACES = ['→', '←', '↑', '↓']
-const isHoriz = (d) => d === '→' || d === '←'
-const crossFaces = (d) => (isHoriz(d) ? ['↑', '↓'] : ['←', '→'])
-
+// 룰렛은 숫자(이동 칸수)와 화살표(스네이크 이동 패턴)를 함께 둔다.
+// 각 SVG는 지그재그 복도와 끝 화살표로 경로를 그린다. 이동은 복도를 따라
+// 화살표 끝으로 향하며, primary/alt 는 시작 모서리·진행 축이 다르다.
+const ARROW_VARIANTS = ['→', '→-alt', '↓', '↓-alt', '←', '←-alt', '↑', '↑-alt']
 const pick = (list) => list[Math.floor(Math.random() * list.length)]
 
-// 두 방향이 정하는 '세는 순서'대로 좌석에 매길 번호.
-// 앞 방향이 줄 안에서의 진행, 뒷 방향이 줄과 줄 사이의 진행이다.
-function orderKeyFactory(d1, d2, rows, cols) {
-  const horiz = isHoriz(d1)
-  const lineCount = horiz ? rows : cols   // 줄의 개수
-  const posCount = horiz ? cols : rows    // 한 줄의 길이
-  const lineAsc = d2 === '↓' || d2 === '→'
-  const posAsc = d1 === '→' || d1 === '↓'
+function snakeOrderKeyFactory(arrow, rows, cols) {
+  const order = []
 
-  return (seat) => {
-    const line = horiz ? seat.row : seat.col
-    const pos = horiz ? seat.col : seat.row
-    const lineRank = lineAsc ? line : lineCount - 1 - line
-    const posRank = posAsc ? pos : posCount - 1 - pos
-    return lineRank * posCount + posRank
+  if (arrow === '→') {
+    // 아래→위, 왼쪽 아래에서 오른쪽으로 시작 (136479)
+    for (let i = 0; i < rows; i++) {
+      const r = rows - 1 - i
+      const row = []
+      for (let c = 0; c < cols; c++) row.push({ row: r, col: c })
+      if (i % 2 === 1) row.reverse()
+      order.push(...row)
+    }
+  } else if (arrow === '→-alt') {
+    // 위→아래, 왼쪽 위에서 오른쪽으로 시작 (796413)
+    for (let r = 0; r < rows; r++) {
+      const row = []
+      for (let c = 0; c < cols; c++) row.push({ row: r, col: c })
+      if (r % 2 === 1) row.reverse()
+      order.push(...row)
+    }
+  } else if (arrow === '←') {
+    // 아래→위, 오른쪽 아래에서 왼쪽으로 시작 (314697)
+    for (let i = 0; i < rows; i++) {
+      const r = rows - 1 - i
+      const row = []
+      for (let c = cols - 1; c >= 0; c--) row.push({ row: r, col: c })
+      if (i % 2 === 1) row.reverse()
+      order.push(...row)
+    }
+  } else if (arrow === '←-alt') {
+    // 위→아래, 오른쪽 위에서 왼쪽으로 시작 (974631)
+    for (let r = 0; r < rows; r++) {
+      const row = []
+      for (let c = cols - 1; c >= 0; c--) row.push({ row: r, col: c })
+      if (r % 2 === 1) row.reverse()
+      order.push(...row)
+    }
+  } else if (arrow === '↓') {
+    // 왼→오 열, 왼쪽 아래에서 위로 시작 — 화살표는 위쪽 (178239)
+    for (let c = 0; c < cols; c++) {
+      const col = []
+      for (let r = rows - 1; r >= 0; r--) col.push({ row: r, col: c })
+      if (c % 2 === 1) col.reverse()
+      order.push(...col)
+    }
+  } else if (arrow === '↓-alt') {
+    // 왼→오 열, 왼쪽 위에서 아래로 시작 (712893)
+    for (let c = 0; c < cols; c++) {
+      const col = []
+      for (let r = 0; r < rows; r++) col.push({ row: r, col: c })
+      if (c % 2 === 1) col.reverse()
+      order.push(...col)
+    }
+  } else if (arrow === '↑') {
+    // 오→왼 열, 오른쪽 아래에서 위로 시작 (398217)
+    for (let i = 0; i < cols; i++) {
+      const c = cols - 1 - i
+      const col = []
+      for (let r = rows - 1; r >= 0; r--) col.push({ row: r, col: c })
+      if (i % 2 === 1) col.reverse()
+      order.push(...col)
+    }
+  } else {
+    // ↑-alt: 오→왼 열, 오른쪽 위에서 아래로 시작 (932871)
+    for (let i = 0; i < cols; i++) {
+      const c = cols - 1 - i
+      const col = []
+      for (let r = 0; r < rows; r++) col.push({ row: r, col: c })
+      if (i % 2 === 1) col.reverse()
+      order.push(...col)
+    }
   }
+
+  const map = new Map()
+  order.forEach((seat, index) => {
+    const key = `${seat.row}-${seat.col}`
+    map.set(key, index)
+  })
+
+  return (seat) => map.get(`${seat.row}-${seat.col}`) ?? Number.MAX_SAFE_INTEGER
 }
 
-const roll9 = () => 1 + Math.floor(Math.random() * 9)
-
-// 한 칸씩 세어 이동할 때의 칸별 지연시간.
-// 처음엔 촘촘하고 끝으로 갈수록 느려지며, 이동 칸수와 무관하게 총 길이를 일정하게 유지한다.
 function buildHopDelays(steps) {
   const total = Math.min(8400, Math.max(2400, steps * 420))
   const weights = Array.from({ length: steps }, (_, k) => 0.12 + Math.pow((k + 1) / steps, 3))
@@ -89,12 +143,12 @@ export function useSeating() {
   const lastAssignedSeatId = ref(null)
   const spin = reactive({
     active: false,
-    phase: 'idle',   // intro | r1 | r2 | r3 | result
+    phase: 'idle',
     studentName: '',
-    n: null,                     // ① 칸수
-    slots: [],                   // ① 눈금 (남은 자리 수만큼)
-    d1: null, d2: null,          // ② 첫 방향 / ③ 줄 끝 방향
-    d2Slots: DIR_FACES           // ③ 눈금 (②가 정해지면 두 갈래로 좁아진다)
+    n: null,
+    slots: [],
+    arrow: null,
+    arrowSlots: ARROW_VARIANTS
   })
 
   const initGrid = () => {
@@ -653,9 +707,13 @@ export function useSeating() {
 
       // --- 오버레이 연출 ---
       Object.assign(spin, {
-        active: true, phase: 'intro', studentName: student.name,
-        n: null, slots: Array.from({ length: free.length }, (_, i) => i + 1),
-        d1: null, d2: null, d2Slots: DIR_FACES
+        active: true,
+        phase: 'intro',
+        studentName: student.name,
+        n: null,
+        slots: Array.from({ length: free.length }, (_, i) => i + 1),
+        arrow: null,
+        arrowSlots: ARROW_VARIANTS
       })
       await wait(600)
 
@@ -664,13 +722,7 @@ export function useSeating() {
       await wait(2200)
 
       spin.phase = 'r2'
-      spin.d1 = pick(DIR_FACES)
-      await wait(2200)
-
-      spin.phase = 'r3'
-      spin.d2Slots = crossFaces(spin.d1)   // 앞 방향과 수직인 두 갈래만 남는다
-      await wait(250)
-      spin.d2 = pick(spin.d2Slots)
+      spin.arrow = pick(ARROW_VARIANTS)
       await wait(2200)
 
       spin.phase = 'result'
@@ -680,13 +732,11 @@ export function useSeating() {
       spin.phase = 'idle'
       await wait(400)
 
-      // --- 격자 위 이동 ---
-      // 주사위가 정한 순서대로 후보를 줄 세운다
-      const orderOf = orderKeyFactory(spin.d1, spin.d2, gridConfig.rows, gridConfig.cols)
+      // --- 격자 위 이동 (룰렛 화살표 SVG와 같은 스네이크 경로) ---
+      const orderOf = snakeOrderKeyFactory(spin.arrow, gridConfig.rows, gridConfig.cols)
       const candidates = [...free].sort((a, b) => orderOf(a) - orderOf(b))
       const N = candidates.length
 
-      // 출발점은 직전 학생 자리 바로 다음 후보. 첫 학생은 맨 앞부터.
       const prev = lastAssignedSeatId.value
         ? seats.value.find(s => s.id === lastAssignedSeatId.value)
         : null
@@ -694,25 +744,22 @@ export function useSeating() {
       let startIdx = candidates.findIndex(s => orderOf(s) > prevOrder)
       if (startIdx === -1) startIdx = 0
 
-      // 출발 칸에 전체 칸수를 띄우고 그만큼 이동한다 → 도착 칸에는 0이 뜬다.
       const steps = spin.n
-      const dir = 1
-      const seatAt = (k) => candidates[(((startIdx + dir * k) % N) + N) % N]
-      const targetIdx = (((startIdx + dir * steps) % N) + N) % N
+      const stepSeat = (k) => candidates[(((startIdx + k) % N) + N) % N]
+      const targetIdx = (((startIdx + steps) % N) + N) % N
 
       if (N === 1) {
-        // 남은 자리가 하나뿐이면 같은 칸을 수십 번 깜빡일 이유가 없다
         highlightedSeatId.value = candidates[0].id
         countdownValue.value = null
         await wait(900)
       } else {
         const delays = buildHopDelays(steps + 1)
         for (let k = 0; k <= steps; k++) {
-          highlightedSeatId.value = seatAt(k).id
+          highlightedSeatId.value = stepSeat(k).id
           countdownValue.value = steps - k
           await wait(delays[k])
         }
-        await wait(400)          // 도착 칸의 '0'을 잠깐 더 보여준다
+        await wait(400)
         countdownValue.value = null
         await wait(450)
       }

@@ -1,12 +1,26 @@
 <script setup>
-// 배정 연출: 룰렛 셋.
-//   ① 몇 칸 갈지 (눈금이 지금 앉을 수 있는 자리 수만큼)
-//   ② 줄을 따라 어느 쪽으로 셀지
-//   ③ 줄이 끝나면 어느 줄로 넘어갈지
-// 결과 배너는 마지막에만 나타난다 (미리 뜨면 긴장감이 사라지므로).
 import SpinWheel from '@/components/SpinWheel.vue'
+import arrowRight from '../../resources/directions/136479.svg'
+import arrowDown from '../../resources/directions/178239.svg'
+import arrowLeft from '../../resources/directions/314697.svg'
+import arrowUp from '../../resources/directions/398217.svg'
+import arrowRightAlt from '../../resources/directions/796413.svg'
+import arrowDownAlt from '../../resources/directions/712893.svg'
+import arrowLeftAlt from '../../resources/directions/974631.svg'
+import arrowUpAlt from '../../resources/directions/932871.svg'
 
-defineProps({ spin: Object })
+const props = defineProps({ spin: Object })
+
+const arrowAsset = (value) => ({
+  '→': arrowRight,
+  '↓': arrowDown,
+  '←': arrowLeft,
+  '↑': arrowUp,
+  '→-alt': arrowRightAlt,
+  '↓-alt': arrowDownAlt,
+  '←-alt': arrowLeftAlt,
+  '↑-alt': arrowUpAlt
+})[value] || null
 </script>
 
 <template>
@@ -18,18 +32,14 @@ defineProps({ spin: Object })
       <h2 class="text-[56px] font-black leading-none text-white">{{ spin.studentName }}</h2>
     </div>
 
-    <div class="flex items-start gap-8">
+    <div class="flex items-center gap-8">
       <div class="flex flex-col items-center gap-3">
         <SpinWheel :slots="spin.slots" :value="spin.n" :size="420" />
         <span class="cap">몇 칸</span>
       </div>
       <div class="flex flex-col items-center gap-3">
-        <SpinWheel :slots="['→', '←', '↑', '↓']" :value="spin.d1" :size="420" />
-        <span class="cap">줄 따라</span>
-      </div>
-      <div class="flex flex-col items-center gap-3">
-        <SpinWheel :slots="spin.d2Slots" :value="spin.d2" :size="420" />
-        <span class="cap">줄 바뀔 때</span>
+        <SpinWheel :slots="spin.arrowSlots" :value="spin.arrow" :size="420" />
+        <span class="cap">방향</span>
       </div>
     </div>
 
@@ -37,7 +47,7 @@ defineProps({ spin: Object })
       <div v-if="spin.phase === 'result'" class="result-pop px-12 py-4 rounded-full flex items-center gap-5"
            style="background: var(--grad); box-shadow: var(--shadow-hot)">
         <span class="text-[52px] font-black leading-none text-white">{{ spin.n }}칸</span>
-        <span class="text-[40px] font-black leading-none text-white/70">{{ spin.d1 }}{{ spin.d2 }}</span>
+        <img v-if="arrowAsset(spin.arrow)" :src="arrowAsset(spin.arrow)" alt="snake direction" class="w-14 h-14" />
       </div>
     </div>
   </div>
