@@ -776,8 +776,32 @@ export function useSeating() {
       selectedStudent.value = null
     },
     importStudents: (text) => {
+      // 이름 목록을 기준으로 맞춘다. 같은 이름은 앞쪽부터 이어 받아
+      // 자리·금지 설정을 유지하고, 빠진 학생만 자리에서 내린다.
       const names = text.split(/[\n\r\t,;]+/).map(n => n.trim()).filter(Boolean)
-      students.value = names.map((name, idx) => ({ id: `std-${Date.now()}-${idx}`, name, isAssigned: false, deniedSeatIds: [] }))
+      const prev = students.value
+      const used = new Set()
+      const next = names.map((name, idx) => {
+        const matchIdx = prev.findIndex((s, i) => !used.has(i) && s.name === name)
+        if (matchIdx !== -1) {
+          used.add(matchIdx)
+          return prev[matchIdx]
+        }
+        return { id: newId('std'), name, isAssigned: false, deniedSeatIds: [] }
+      })
+
+      const keptIds = new Set(next.map(s => s.id))
+      prev.forEach(s => {
+        if (keptIds.has(s.id)) return
+        releaseStudent(s.id)
+      })
+      if (selectedStudent.value && !keptIds.has(selectedStudent.value.id)) {
+        selectedStudent.value = null
+        placingStudentId.value = null
+        isRestrictionMode.value = false
+      }
+
+      students.value = next
     }
   })
 }

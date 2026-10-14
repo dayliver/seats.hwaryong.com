@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Textarea } from '@/components/ui/textarea'
@@ -10,9 +10,14 @@ import { navCursor } from '@/composables/useKeyboardNav'
 
 const props = defineProps({ seating: Object })
 const isImportOpen = ref(false)
-const rawInput = ref("")
+const rawInput = ref('')
 
 const remaining = computed(() => props.seating.students.filter(s => !s.isAssigned).length)
+
+watch(isImportOpen, (open) => {
+  if (!open) return
+  rawInput.value = props.seating.students.map(s => s.name).join('\n')
+})
 
 // 학생을 누르면 그 학생으로 무엇을 할지 묻는다.
 // 다만 이미 내려둔 지시가 있으면 메뉴 없이 곧바로 그 지시를 수행한다.
@@ -72,7 +77,6 @@ const studentMenu = (s) => {
 
 const handleImport = () => {
   props.seating.importStudents(rawInput.value)
-  rawInput.value = ""
   isImportOpen.value = false
 }
 </script>
@@ -96,9 +100,9 @@ const handleImport = () => {
           </DialogTrigger>
           <DialogContent class="!rounded-[22px] !border-0 !p-8 !gap-5 sm:max-w-lg" style="box-shadow: var(--shadow-md)">
             <DialogHeader>
-              <DialogTitle class="text-[26px] font-black leading-tight">명단 붙여넣기</DialogTitle>
+              <DialogTitle class="text-[26px] font-black leading-tight">명단 편집</DialogTitle>
               <DialogDescription class="text-[17px] leading-relaxed pt-1" style="color: var(--c-ink-soft)">
-                엑셀에서 복사한 이름을 그대로 붙여넣으세요. 줄바꿈·쉼표·탭 모두 인식합니다.
+                지금 명단이 채워져 있습니다. 전입·전출만 고치면 됩니다. 줄바꿈·쉼표·탭 모두 인식합니다.
               </DialogDescription>
             </DialogHeader>
             <Textarea
@@ -107,7 +111,7 @@ const handleImport = () => {
               style="box-shadow: inset 0 0 0 1.5px var(--c-line); background: var(--c-bg)"
               placeholder="강시훈&#10;강승구..."
             />
-            <DialogFooter><Button @click="handleImport">명단 만들기</Button></DialogFooter>
+            <DialogFooter><Button @click="handleImport">적용</Button></DialogFooter>
           </DialogContent>
         </Dialog>
       </div>
