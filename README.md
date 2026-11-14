@@ -1,5 +1,164 @@
-# Vue 3 + Vite
+# 교실 좌석 배치 — seats.hwaryong.com
 
-This template should help get you started developing with Vue 3 in Vite. The template uses Vue 3 `<script setup>` SFCs, check out the [script setup docs](https://v3.vuejs.org/api/sfc-script-setup.html#sfc-script-setup) to learn more.
+교실 자리를 룰렛으로 뽑아 배치하는 앱. 1920×1080 캔버스를 `zoom`으로 화면에 맞춰 띄우는
+프레젠테이션 방식이라 교실 TV·빔프로젝터에 그대로 띄워 쓴다. 서버 없이 브라우저에서만 돈다.
 
-Learn more about IDE Support for Vue in the [Vue Docs Scaling up Guide](https://vuejs.org/guide/scaling-up/tooling.html#ide-support).
+이 저장소의 문서는 이 파일 하나다. 구조·규칙·할 일·작업 내역을 모두 여기에 적는다.
+
+## 개발과 배포
+
+```
+yarn install
+yarn dev                  # 개발 서버
+yarn build && yarn sync   # 빌드 후 rsync → home:/projects/seats.hwaryong.com
+```
+
+- Vue 3 + Vite + Tailwind 4. 테스트 러너는 없다.
+- `yarn`이 없는 PC에서는 `corepack yarn@1.22.22 <명령>`으로 대신한다 (lockfile이 yarn v1 형식).
+- `yarn sync`는 `--delete`로 서버의 이전 빌드 파일을 지운다.
+- 폰트는 에이투지체 (jsdelivr CDN, 눈누). `public/_headers`의 COEP `require-corp` 아래에서도
+  CDN이 CORS·CORP 헤더를 보내므로 로드된다.
+
+## 구조
+
+```
+src/
+  composables/useSeating.js      상태와 규칙 전부 (명단·좌석·배정·룰렛·저장)
+  composables/useKeyboardNav.js  Tab/방향키/Enter/Esc 커서. 브라우저 포커스를 그대로 쓴다
+  composables/useActionMenu.js   학생·좌석·행·열을 Enter하면 뜨는 상황별 메뉴 (단일 인스턴스)
+  lib/snake.js                   스네이크 경로 8종 — 이동 순서와 아이콘 도형의 단일 출처
+  lib/themes.js                  테마 팔레트. 색의 단일 출처, CSS 변수로 주입
+  lib/print.js                   인쇄용 새 창 HTML 생성
+  lib/snapshots.js               이름 붙여 굳혀 둔 배치 (localStorage, 자동 저장과 키 분리)
+  lib/share.js                   배치를 링크 하나로 (공유 전용 최소 형식 + deflate + base64url)
+  components/
+    StudentPanel.vue             왼쪽 명단
+    SeatGrid.vue                 좌석 격자 + 헤더 + 햄버거 메뉴
+    SettingsDialog.vue           테마 / 명단 관리
+    SnapshotsDialog.vue          저장된 배치 불러오기 · 파일 내보내기/가져오기
+    ShareDialog.vue              링크 · QR · 메일
+    ActionMenu.vue               상황별 액션 메뉴 (캔버스 좌표에 절대 배치)
+    SpinOverlay.vue              배정 연출 오버레이
+    SpinWheel.vue                원형 룰렛 (숫자·방향 눈금 공용)
+    SnakeIcon.vue                방향 아이콘 (격자 줄 수에 맞춰 그리는 인라인 SVG)
+```
+
+화면 격자는 칠판이 위인 **학생 시점**이다 (1행이 맨 앞줄). 인쇄물의 교사 시점은 180° 회전본.
+
+## 배정 규칙
+
+룰렛 둘을 돌린다.
+
+- **① 칸수** — 눈금이 *그 학생이 앉을 수 있는 자리 수 N*만큼. 1~N이 후보를 정확히 한 번씩
+  덮으므로 모든 자리가 같은 확률이다.
+- **② 방향** — 격자를 지그재그로 훑는 스네이크 경로 8종 (출발 모서리 4 × 가로/세로 2).
+  이름은 숫자패드(7 8 9 / 4 5 6 / 1 2 3) 위 3×3 경로다. `136479` = 왼쪽 아래에서 →로 출발해
+  한 줄씩 위로.
+
+이동은 그 학생이 앉을 수 있는 빈 자리 목록 위에서만 세고, 목록 길이로 순환하므로 항상
+유효한 자리에 착지한다 — 재추첨이 없다. 출발점은 직전 학생 자리 바로 다음 후보이고,
+출발 칸에 전체 칸수를 띄워 도착 칸에 0이 뜬다.
+
+**아이콘과 경로는 반드시 같은 곳에서 나와야 한다.** 둘 다 `lib/snake.js`가 만든다.
+아이콘은 실제 격자의 줄 수 홀짝에 맞춰 3줄(홀수)/4줄(짝수)로 그린다. 줄 수가 짝수면
+스네이크가 출발한 쪽으로 돌아와 끝나므로, 3줄 고정 그림으로는 화살촉의 위치와 방향이
+실제와 반대가 된다 (2026-11-14에 고친 문제).
+
+## 행동 (액션 메뉴)
+
+학생·좌석·행 머리글·열 머리글을 Enter하거나 클릭하면 상황별 메뉴가 뜬다.
+진행 중인 지시(직접 배정·자리 교체·금지 지정·구조 설정·줄 교체)가 있으면 메뉴 없이
+곧바로 그 지시를 수행한다. Esc는 안쪽부터 하나씩 푼다. 명단을 바꾸면 지시는 모두 비워진다.
+
+## 저장
+
+### 자동 저장 (localStorage `seats-data`, version 2)
+
+```jsonc
+{
+  "version": 2,
+  "theme": "choco",
+  "activeId": "roster-...",
+  "rosters": [
+    { "id": "...", "name": "우리 반",
+      "gridConfig": { "rows": 6, "cols": 6 },
+      "students": [{ "id", "name", "isAssigned", "deniedSeatIds": [] }],
+      "seats":    [{ "id": "seat-r-c", "row", "col", "status", "studentId" }] }
+  ]
+}
+```
+
+`status`는 `available` / `occupied` / `forbidden`. version 1(명단 하나짜리 평면 구조)은
+첫 실행 때 자동으로 명단 하나로 옮겨진다.
+
+### 저장된 배치 (localStorage `seats-snapshots`)
+
+한쪽이 망가져도 다른 쪽은 살아남게 키를 나눴다. 한 스냅샷이 약 7KB라 5MB면 수백 개가
+들어간다 — IndexedDB는 이 크기에서 얻을 게 없어 쓰지 않았다. 다만 localStorage는 브라우저
+기록 삭제 한 번에 사라지므로, JSON 파일 내보내기가 진짜 안전장치다.
+
+### 공유 링크
+
+저장 형식을 그대로 담으면 30명 기준 압축 후에도 1,052자라 QR에 넣기 버겁다. 그래서 공유용
+최소 형식을 따로 뒀다 — `1|행|열|명단이름|이름,이름,…|좌석.좌석.…` (좌석 한 칸은 `-` 빈자리 /
+`x` 없는 자리 / 36진수 학생 번호). deflate-raw + base64url을 거쳐 링크 전체가 **약 420자**다.
+압축은 브라우저 기본 `CompressionStream`. 금지 좌석 설정은 담지 않는다.
+
+링크를 열면 기존 명단을 덮지 않고 새 명단으로 받는다. 앱이 이미 열린 탭에 붙여 넣어도
+(`hashchange`) 받는다.
+
+## 다음 할 일
+
+### 좌석 그리드를 쉽게 그리기
+
+`gridConfig.rows` / `cols`를 바꿀 방법이 UI에 없어 6×6에 고정돼 있다. "구조 설정" 모드는
+이미 만들어진 칸을 없애고 되살리는 것만 가능하다.
+
+1. **설정 다이얼로그에 "교실" 항목** — 행/열 수 조절, 작은 미리보기, 흔한 교실 모양
+   프리셋(4×5, 5×6, 6×6, 짝지어 앉기 등). 줄이면 그 자리의 배정이 사라지므로 확인 절차가
+   필요하다. `initGrid()`가 사라진 좌석을 가리키는 금지 설정을 이미 정리한다.
+2. **첫 사용자 튜토리얼** — ① 교실 크기 → ② 명단 붙여넣기 → ③ 학생 고르고 룰렛.
+   명단이 하나도 없을 때만 뜨고, 완료하면 다시 안 뜨게.
+
+### 필요하면
+
+- **연출 건너뛰기 · 속도 조절.** 룰렛 약 7초 + 이동 최대 8.8초로 한 명당 약 15초,
+  30명이면 8분이다.
+- **출발 위치 표시.** 하이라이트가 스네이크의 출발 모서리가 아니라 직전 학생 자리
+  다음 칸에서 시작한다. 규칙은 맞지만 처음 보면 방향이 헷갈릴 수 있다.
+
+### 정리 대상 (아무 데서도 안 쓰는 파일)
+
+- `src/components/HelloWorld.vue`, `src/assets/` — Vite 템플릿 잔재
+- `src/lib/utils.ts` — `utils.js`와 중복
+- `resources/directions/*.svg` — 방향 아이콘을 인라인으로 그리면서 쓰지 않게 됨
+
+## 작업 내역
+
+### 2026-11-14 — 룰렛 방향 점검과 수정 (`14443d8`)
+
+- **방향.** 6×6에서 아이콘 8종 모두가 실제 이동과 어긋나 있었다 (위 "배정 규칙" 참고).
+  이동 순서와 아이콘을 `lib/snake.js`로 묶고 아이콘을 인라인 SVG로 다시 그렸다.
+  SVG 파일을 `<image>`로 불러오면 `currentColor`가 검정으로 굳는 문제도 함께 풀렸다.
+  눈금 위 아이콘 36 → 44, 가운데 결과 아이콘 52 → 80.
+- **고친 버그.** 열린 탭에서 공유 링크를 못 받던 것 / 명단을 바꿔도 남던 지시 /
+  줄 교체 중 좌석을 누르면 학생이 앉던 것 / 파일 가져오기의 저장 실패가 성공처럼 보이던 것 /
+  자동 저장 용량 초과 시 예외.
+- **확인한 방법.** 격자 9종 × 경로 8종에서 아이콘 도형과 이동 순서의 출발 모서리·첫 방향·
+  마지막 방향·화살촉 위치를 Node로 대조했고, 룰렛 화면은 헤드리스 Firefox로 찍어 봤다.
+- **확인하지 못한 것.** 좌석 위 하이라이트 이동과 위 버그 다섯 가지는 브라우저에서 직접
+  돌려 보지 않았다.
+
+### 이전
+
+| 날짜 | 커밋 | 내용 |
+|---|---|---|
+| 2026-10-14 | `5e0251b` | 명단 편집 시 현재 목록을 보여주고 전입·전출만 반영 |
+| 2026-10-14 | `4e665a2` | 룰렛 방향을 스네이크 SVG 8종으로 통일 |
+| 2026-09-01 | `770bc4d` | 0.0.1 — 배치 저장·불러오기, 공유 링크, 아이콘, 칠판 표시, 인쇄 시점 바로잡음 |
+| 2026-09-01 | `6225fcd` | 0.0.1-alpha2 — 액션 메뉴, 룰렛 3개 배정, 모눈 배경 |
+| 2026-09-01 | `19f2d67` | 0.0.1-alpha1 — 전체화면 버튼, 게임식 키보드 조작 |
+| 2026-08-31 | `9bafa99` | 룰렛 배정 연출, 테마 5종, 명단 다중 관리 |
+| 2026-08-31 | `344fcec` | 인쇄 기능, 금지 좌석 일괄 해제 |
+
+자세한 배경은 각 커밋 메시지에 있다.
