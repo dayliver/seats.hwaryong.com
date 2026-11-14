@@ -77,6 +77,7 @@ const activateSeat = (r, c) => {
   const el = document.querySelector(`[data-seat="${r}-${c}"]`)
 
   if (hasPendingOrder()) {
+    if (seating.lineSwapFrom) return   // 줄 교체 중에는 머리글만 받는다
     if (seating.placingStudentId && seat?.status === 'available') {
       const st = seating.students.find(x => x.id === seating.placingStudentId)
       if (st) return void seating.placeStudentAt(st, seat.id)

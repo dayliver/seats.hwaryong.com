@@ -1,7 +1,8 @@
-import { ref, reactive, computed, watch, onMounted } from 'vue'
+import { ref, reactive, computed, watch, onMounted, onUnmounted } from 'vue'
 import { applyTheme, DEFAULT_THEME, getTheme } from '@/lib/themes'
 import * as store from '@/lib/snapshots'
 import { readShareLink, clearShareHash } from '@/lib/share'
+import { SNAKE_IDS, snakeOrderKey } from '@/lib/snake'
 
 const STORE_KEY = 'seats-data'
 const newId = (p) => `${p}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
@@ -14,94 +15,7 @@ const blankRoster = (name) => ({
 })
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms))
-
-// 룰렛은 숫자(이동 칸수)와 화살표(스네이크 이동 패턴)를 함께 둔다.
-// 각 SVG는 지그재그 복도와 끝 화살표로 경로를 그린다. 이동은 복도를 따라
-// 화살표 끝으로 향하며, primary/alt 는 시작 모서리·진행 축이 다르다.
-const ARROW_VARIANTS = ['→', '→-alt', '↓', '↓-alt', '←', '←-alt', '↑', '↑-alt']
 const pick = (list) => list[Math.floor(Math.random() * list.length)]
-
-function snakeOrderKeyFactory(arrow, rows, cols) {
-  const order = []
-
-  if (arrow === '→') {
-    // 아래→위, 왼쪽 아래에서 오른쪽으로 시작 (136479)
-    for (let i = 0; i < rows; i++) {
-      const r = rows - 1 - i
-      const row = []
-      for (let c = 0; c < cols; c++) row.push({ row: r, col: c })
-      if (i % 2 === 1) row.reverse()
-      order.push(...row)
-    }
-  } else if (arrow === '→-alt') {
-    // 위→아래, 왼쪽 위에서 오른쪽으로 시작 (796413)
-    for (let r = 0; r < rows; r++) {
-      const row = []
-      for (let c = 0; c < cols; c++) row.push({ row: r, col: c })
-      if (r % 2 === 1) row.reverse()
-      order.push(...row)
-    }
-  } else if (arrow === '←') {
-    // 아래→위, 오른쪽 아래에서 왼쪽으로 시작 (314697)
-    for (let i = 0; i < rows; i++) {
-      const r = rows - 1 - i
-      const row = []
-      for (let c = cols - 1; c >= 0; c--) row.push({ row: r, col: c })
-      if (i % 2 === 1) row.reverse()
-      order.push(...row)
-    }
-  } else if (arrow === '←-alt') {
-    // 위→아래, 오른쪽 위에서 왼쪽으로 시작 (974631)
-    for (let r = 0; r < rows; r++) {
-      const row = []
-      for (let c = cols - 1; c >= 0; c--) row.push({ row: r, col: c })
-      if (r % 2 === 1) row.reverse()
-      order.push(...row)
-    }
-  } else if (arrow === '↓') {
-    // 왼→오 열, 왼쪽 아래에서 위로 시작 — 화살표는 위쪽 (178239)
-    for (let c = 0; c < cols; c++) {
-      const col = []
-      for (let r = rows - 1; r >= 0; r--) col.push({ row: r, col: c })
-      if (c % 2 === 1) col.reverse()
-      order.push(...col)
-    }
-  } else if (arrow === '↓-alt') {
-    // 왼→오 열, 왼쪽 위에서 아래로 시작 (712893)
-    for (let c = 0; c < cols; c++) {
-      const col = []
-      for (let r = 0; r < rows; r++) col.push({ row: r, col: c })
-      if (c % 2 === 1) col.reverse()
-      order.push(...col)
-    }
-  } else if (arrow === '↑') {
-    // 오→왼 열, 오른쪽 아래에서 위로 시작 (398217)
-    for (let i = 0; i < cols; i++) {
-      const c = cols - 1 - i
-      const col = []
-      for (let r = rows - 1; r >= 0; r--) col.push({ row: r, col: c })
-      if (i % 2 === 1) col.reverse()
-      order.push(...col)
-    }
-  } else {
-    // ↑-alt: 오→왼 열, 오른쪽 위에서 아래로 시작 (932871)
-    for (let i = 0; i < cols; i++) {
-      const c = cols - 1 - i
-      const col = []
-      for (let r = 0; r < rows; r++) col.push({ row: r, col: c })
-      if (i % 2 === 1) col.reverse()
-      order.push(...col)
-    }
-  }
-
-  const map = new Map()
-  order.forEach((seat, index) => {
-    const key = `${seat.row}-${seat.col}`
-    map.set(key, index)
-  })
-
-  return (seat) => map.get(`${seat.row}-${seat.col}`) ?? Number.MAX_SAFE_INTEGER
-}
 
 function buildHopDelays(steps) {
   const total = Math.min(8400, Math.max(2400, steps * 420))
@@ -148,7 +62,7 @@ export function useSeating() {
     n: null,
     slots: [],
     arrow: null,
-    arrowSlots: ARROW_VARIANTS
+    arrowSlots: SNAKE_IDS
   })
 
   const initGrid = () => {
@@ -407,6 +321,10 @@ export function useSeating() {
     isRestrictionMode.value = false
     isEditMode.value = false
     lastAssignedSeatId.value = null
+    // 앞 명단에서 내려둔 지시가 새 명단에 적용되지 않게 비운다
+    placingStudentId.value = null
+    pendingSeatId.value = null
+    lineSwapFrom.value = null
     if (!seats.value.length) initGrid()
   }
 
@@ -590,8 +508,9 @@ export function useSeating() {
         : '파일을 읽지 못했습니다.'
       return false
     }
+    let saved = true
     if (res.snapshots.length) {
-      apply(store.putSnapshots([
+      saved = apply(store.putSnapshots([
         ...res.snapshots.map(s => ({ ...s, id: newId('snap') })),
         ...snapshots.value
       ]))
@@ -602,8 +521,8 @@ export function useSeating() {
       rosters.value.push(...added)
       openRoster(added[0])
     }
-    saveError.value = null
-    return true
+    if (saved) saveError.value = null
+    return saved
   }
 
   const setTheme = (id) => {
@@ -612,12 +531,20 @@ export function useSeating() {
 
   const getStudentName = (id) => students.value.find(s => s.id === id)?.name || ''
 
-  onMounted(async () => { loadData(); await openSharedLink() })
+  // 앱이 이미 열린 탭에 공유 링크를 붙여 넣으면 해시만 바뀌므로 그것도 듣는다
+  const onHashChange = () => { if (!isAnimating.value) openSharedLink() }
+  onMounted(async () => {
+    loadData()
+    await openSharedLink()
+    window.addEventListener('hashchange', onHashChange)
+  })
+  onUnmounted(() => window.removeEventListener('hashchange', onHashChange))
 
   // 저장할 때 rosters를 건드리면 watcher가 다시 돌므로, 쓰기용 사본만 만든다
   watch([rosters, activeRosterId, students, seats, gridConfig, themeId], () => {
     if (!activeRosterId.value) return
-    localStorage.setItem(STORE_KEY, JSON.stringify({
+    try {
+      localStorage.setItem(STORE_KEY, JSON.stringify({
       version: 2,
       theme: themeId.value,
       activeId: activeRosterId.value,
@@ -629,7 +556,10 @@ export function useSeating() {
             seats: seats.value
           }
         : r)
-    }))
+      }))
+    } catch (e) {
+      saveError.value = '자동 저장에 실패했습니다. 저장 공간을 확인하고 파일로 내보내 두세요.'
+    }
   }, { deep: true })
 
   return reactive({
@@ -713,7 +643,7 @@ export function useSeating() {
         n: null,
         slots: Array.from({ length: free.length }, (_, i) => i + 1),
         arrow: null,
-        arrowSlots: ARROW_VARIANTS
+        arrowSlots: SNAKE_IDS
       })
       await wait(600)
 
@@ -722,7 +652,7 @@ export function useSeating() {
       await wait(2200)
 
       spin.phase = 'r2'
-      spin.arrow = pick(ARROW_VARIANTS)
+      spin.arrow = pick(SNAKE_IDS)
       await wait(2200)
 
       spin.phase = 'result'
@@ -732,8 +662,8 @@ export function useSeating() {
       spin.phase = 'idle'
       await wait(400)
 
-      // --- 격자 위 이동 (룰렛 화살표 SVG와 같은 스네이크 경로) ---
-      const orderOf = snakeOrderKeyFactory(spin.arrow, gridConfig.rows, gridConfig.cols)
+      // --- 격자 위 이동 (룰렛 아이콘과 같은 스네이크 경로, lib/snake.js) ---
+      const orderOf = snakeOrderKey(spin.arrow, gridConfig.rows, gridConfig.cols)
       const candidates = [...free].sort((a, b) => orderOf(a) - orderOf(b))
       const N = candidates.length
 

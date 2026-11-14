@@ -1,26 +1,9 @@
 <script setup>
 import SpinWheel from '@/components/SpinWheel.vue'
-import arrowRight from '../../resources/directions/136479.svg'
-import arrowDown from '../../resources/directions/178239.svg'
-import arrowLeft from '../../resources/directions/314697.svg'
-import arrowUp from '../../resources/directions/398217.svg'
-import arrowRightAlt from '../../resources/directions/796413.svg'
-import arrowDownAlt from '../../resources/directions/712893.svg'
-import arrowLeftAlt from '../../resources/directions/974631.svg'
-import arrowUpAlt from '../../resources/directions/932871.svg'
+import SnakeIcon from '@/components/SnakeIcon.vue'
+import { isSnake } from '@/lib/snake'
 
-const props = defineProps({ spin: Object })
-
-const arrowAsset = (value) => ({
-  '→': arrowRight,
-  '↓': arrowDown,
-  '←': arrowLeft,
-  '↑': arrowUp,
-  '→-alt': arrowRightAlt,
-  '↓-alt': arrowDownAlt,
-  '←-alt': arrowLeftAlt,
-  '↑-alt': arrowUpAlt
-})[value] || null
+defineProps({ spin: Object, grid: { type: Object, default: () => ({ rows: 3, cols: 3 }) } })
 </script>
 
 <template>
@@ -38,7 +21,7 @@ const arrowAsset = (value) => ({
         <span class="cap">몇 칸</span>
       </div>
       <div class="flex flex-col items-center gap-3">
-        <SpinWheel :slots="spin.arrowSlots" :value="spin.arrow" :size="420" />
+        <SpinWheel :slots="spin.arrowSlots" :value="spin.arrow" :grid="grid" :size="420" />
         <span class="cap">방향</span>
       </div>
     </div>
@@ -47,7 +30,7 @@ const arrowAsset = (value) => ({
       <div v-if="spin.phase === 'result'" class="result-pop px-12 py-4 rounded-full flex items-center gap-5"
            style="background: var(--grad); box-shadow: var(--shadow-hot)">
         <span class="text-[52px] font-black leading-none text-white">{{ spin.n }}칸</span>
-        <img v-if="arrowAsset(spin.arrow)" :src="arrowAsset(spin.arrow)" alt="snake direction" class="w-14 h-14" />
+        <SnakeIcon v-if="isSnake(spin.arrow)" :id="spin.arrow" :rows="grid.rows" :cols="grid.cols" class="w-14 h-14 text-white" />
       </div>
     </div>
   </div>

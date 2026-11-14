@@ -56,7 +56,7 @@ onUnmounted(() => {
       <ActionMenu />
 
       <Transition name="spin-fade">
-        <SpinOverlay v-if="seating.spin.active" :spin="seating.spin" />
+        <SpinOverlay v-if="seating.spin.active" :spin="seating.spin" :grid="seating.gridConfig" />
       </Transition>
 
     </div>

@@ -1,18 +1,14 @@
 <script setup>
 import { ref, watch, onUnmounted, computed } from 'vue'
-import arrowRight from '../../resources/directions/136479.svg'
-import arrowDown from '../../resources/directions/178239.svg'
-import arrowLeft from '../../resources/directions/314697.svg'
-import arrowUp from '../../resources/directions/398217.svg'
-import arrowRightAlt from '../../resources/directions/796413.svg'
-import arrowDownAlt from '../../resources/directions/712893.svg'
-import arrowLeftAlt from '../../resources/directions/974631.svg'
-import arrowUpAlt from '../../resources/directions/932871.svg'
+import SnakeIcon from '@/components/SnakeIcon.vue'
+import { isSnake } from '@/lib/snake'
 
 const props = defineProps({
   slots: { type: Array, default: () => [] },
   value: { type: [String, Number], default: null },
-  size: { type: Number, default: 420 }
+  size: { type: Number, default: 420 },
+  // 방향 아이콘을 실제 격자의 줄 수에 맞춰 그리기 위한 크기
+  grid: { type: Object, default: () => ({ rows: 3, cols: 3 }) }
 })
 
 const TURNS = 5
@@ -22,18 +18,6 @@ const CX = 220
 const CY = 240
 const R = 200
 const LABEL_R = 148
-
-const ARROW_ASSETS = {
-  '→': arrowRight,
-  '↓': arrowDown,
-  '←': arrowLeft,
-  '↑': arrowUp,
-  '→-alt': arrowRightAlt,
-  '↓-alt': arrowDownAlt,
-  '←-alt': arrowLeftAlt,
-  '↑-alt': arrowUpAlt
-}
-const isArrow = (v) => !!ARROW_ASSETS[v]
 
 const count = computed(() => Math.max(props.slots.length, 1))
 const sweep = computed(() => 360 / count.value)
@@ -100,14 +84,11 @@ const wheelStyle = computed(() => ({
         <path v-for="w in wedges" v-else :key="w.key" :d="w.d" class="slot" :class="`slot--${w.skin}`" />
 
         <g v-for="w in wedges" :key="'l' + w.key" :transform="`rotate(${w.rot} ${w.x} ${w.y})`">
-          <image
-            v-if="isArrow(w.label)"
-            :href="ARROW_ASSETS[w.label]"
-            :x="w.x - 18"
-            :y="w.y - 18"
-            width="36"
-            height="36"
-            class="arrow-mark"
+          <SnakeIcon
+            v-if="isSnake(w.label)"
+            :id="w.label" :rows="grid.rows" :cols="grid.cols"
+            :x="w.x - 22" :y="w.y - 22" width="44" height="44"
+            :class="`ico--${w.skin}`"
           />
           <text
             v-else :x="w.x" :y="w.y"
@@ -122,15 +103,13 @@ const wheelStyle = computed(() => ({
       <circle class="ring" :cx="CX" :cy="CY" r="76" />
       <circle class="hub" :cx="CX" :cy="CY" r="66" />
 
-      <image
-        v-if="settled && isArrow(value)"
-        :href="ARROW_ASSETS[value]"
-        :x="CX - 26"
-        :y="CY - 26"
-        width="52"
-        height="52"
-        class="hub-arrow value-pop"
-      />
+      <g v-if="settled && isSnake(value)" class="value-pop">
+        <SnakeIcon
+          :id="value" :rows="grid.rows" :cols="grid.cols"
+          :x="CX - 40" :y="CY - 40" width="80" height="80"
+          class="hub-ico"
+        />
+      </g>
       <text
         v-else
         :x="CX" :y="CY + 4"
@@ -154,9 +133,15 @@ const wheelStyle = computed(() => ({
 .slot--1 { fill: var(--c-accent); }
 .slot--2 { fill: var(--c-surface); }
 
-.num--0, .glyph.num--0 { fill: var(--c-surface); }
-.num--1, .glyph.num--1 { fill: var(--c-ink); }
-.num--2, .glyph.num--2 { fill: var(--c-primary); }
+.num--0 { fill: var(--c-surface); }
+.num--1 { fill: var(--c-ink); }
+.num--2 { fill: var(--c-primary); }
+
+/* 방향 아이콘은 currentColor로 그려지므로 칸 색에 맞춰 글자색을 준다 */
+.ico--0 { color: var(--c-surface); }
+.ico--1 { color: var(--c-ink); }
+.ico--2 { color: var(--c-primary); }
+.hub-ico { color: var(--c-primary); }
 
 .hub-num { fill: var(--c-muted); }
 .hub-num.is-on { fill: var(--c-primary); }
