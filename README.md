@@ -15,7 +15,7 @@ yarn deploy   # 빌드 후 Cloudflare Pages(seats-hwaryong-com)로 배포
 
 - Vue 3 + Vite + Tailwind 4. 테스트 러너는 없다.
 - `yarn`이 없는 PC에서는 `corepack yarn@1.22.22 <명령>`으로 대신한다 (lockfile이 yarn v1 형식).
-- `yarn sync`는 `--delete`로 서버의 이전 빌드 파일을 지운다.
+- 배포는 Cloudflare Pages. `public/_headers` 가 그대로 적용된다.
 - 폰트는 에이투지체 (jsdelivr CDN, 눈누). `public/_headers`의 COEP `require-corp` 아래에서도
   CDN이 CORS·CORP 헤더를 보내므로 로드된다.
 
