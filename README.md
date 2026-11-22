@@ -10,7 +10,7 @@
 ```
 yarn install
 yarn dev                  # 개발 서버
-yarn build && yarn sync   # 빌드 후 rsync → home:/var/www/seats.hwaryong.com
+yarn deploy   # 빌드 후 Cloudflare Pages(seats-hwaryong-com)로 배포
 ```
 
 - Vue 3 + Vite + Tailwind 4. 테스트 러너는 없다.
