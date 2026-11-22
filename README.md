@@ -10,7 +10,7 @@
 ```
 yarn install
 yarn dev                  # 개발 서버
-yarn build && yarn sync   # 빌드 후 rsync → home:/projects/seats.hwaryong.com
+yarn build && yarn sync   # 빌드 후 rsync → home:/var/www/seats.hwaryong.com
 ```
 
 - Vue 3 + Vite + Tailwind 4. 테스트 러너는 없다.

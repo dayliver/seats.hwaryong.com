@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "sync": "rsync -uav --delete ./dist home:/projects/seats.hwaryong.com"
+    "sync": "rsync -uav --delete ./dist/ home:/var/www/seats.hwaryong.com/"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.2.2",
